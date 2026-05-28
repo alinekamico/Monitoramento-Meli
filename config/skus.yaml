@@ -1,0 +1,127 @@
+# ============================================================
+# SKUs rastreados — Central de Promoções Meli
+# ============================================================
+# Fonte: PDV Campanhas Meli.xlsx (revisado em 2026-04-29)
+# Futuro: substituir custo por chamada à API do Tiny ERP.
+#
+# Campos:
+#   custo        : CMV (R$) — custo médio de aquisição
+#   peso         : peso do produto em kg (usado na tabela de frete)
+#   tipo_anuncio : "Clássico" (14% comissão) ou "Premium" (19% comissão)
+# ============================================================
+
+skus:
+  WLK004:
+    custo: 139.65
+    peso: 2.0
+    tipo_anuncio: "Clássico"
+
+  WL008:
+    custo: 68.590984
+    peso: 1.0
+    tipo_anuncio: "Clássico"
+
+  WL029:
+    custo: 93.6
+    peso: 0.5
+    tipo_anuncio: "Clássico"
+
+  WL028:
+    custo: 82.25575
+    peso: 1.0
+    tipo_anuncio: "Clássico"
+
+  WL010:
+    custo: 78.959105
+    peso: 0.5
+    tipo_anuncio: "Clássico"
+
+  WLK005:
+    custo: 147.550089
+    peso: 1.5
+    tipo_anuncio: "Clássico"
+
+  WLK006:
+    custo: 218.0
+    peso: 2.5
+    tipo_anuncio: "Clássico"
+
+  WLK026:
+    custo: 176.855149
+    peso: 1.5
+    tipo_anuncio: "Clássico"
+
+  WLK169:
+    custo: 164.5115
+    peso: 2.0
+    tipo_anuncio: "Clássico"
+
+  WL033:
+    custo: 60.741379
+    peso: 0.1
+    tipo_anuncio: "Clássico"
+
+  WL035:
+    custo: 60.241421
+    peso: 0.1
+    tipo_anuncio: "Clássico"
+
+  WL039:
+    custo: 82.419089
+    peso: 1.0
+    tipo_anuncio: "Clássico"
+
+  WL043:
+    custo: 86.357888
+    peso: 0.5
+    tipo_anuncio: "Clássico"
+
+  WLK018:
+    custo: 168.648554
+    peso: 2.0
+    tipo_anuncio: "Clássico"
+
+  WLK019:
+    custo: 168.776977
+    peso: 1.5
+    tipo_anuncio: "Clássico"
+
+  WLK020:
+    custo: 255.006442
+    peso: 2.5
+    tipo_anuncio: "Clássico"
+
+  WL009:
+    custo: 71.38
+    peso: 1.0
+    tipo_anuncio: "Clássico"
+
+  WL041:
+    custo: 86.229465
+    peso: 1.0
+    tipo_anuncio: "Clássico"
+
+  WL036:
+    custo: 27.966056
+    peso: 0.1
+    tipo_anuncio: "Clássico"
+
+  WL034:
+    custo: 27.966056
+    peso: 0.1
+    tipo_anuncio: "Clássico"
+
+  WL025:
+    custo: 68.736566
+    peso: 1.0
+    tipo_anuncio: "Clássico"
+
+  WL013:
+    custo: 43.114733
+    peso: 0.15
+    tipo_anuncio: "Clássico"
+
+  WLK047:
+    custo: 182.49
+    peso: 2.2
+    tipo_anuncio: "Clássico"

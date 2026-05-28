@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Preview — Gráfico Preço × Vendas</title>
+<style>
+  :root {
+    --bg:      #0f1117;
+    --surface: #1a1d27;
+    --border:  #2a2d3a;
+    --text:    #e2e8f0;
+    --muted:   #64748b;
+    --accent:  #facc15;
+    --green:   #22c55e;
+    --red:     #ef4444;
+    --blue:    #3b82f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 13px;
+    padding: 32px;
+  }
+  h2 { margin-bottom: 20px; font-size: 15px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+
+  /* --- Selector --- */
+  .vendas-selector { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .vendas-selector select {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 5px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; width: auto;
+  }
+  .vendas-selector select:focus { outline: none; border-color: var(--accent); }
+
+  /* --- Resumo --- */
+  .vendas-periodo-filter { display: flex; gap: 4px; margin-bottom: 8px; }
+  .vendas-periodo-btn {
+    padding: 3px 10px; border: 1px solid var(--border); border-radius: 12px;
+    font-size: 11px; cursor: pointer; background: var(--bg); color: var(--muted);
+  }
+  .vendas-periodo-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(250,204,21,.08); }
+  .vendas-resumo { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .vendas-resumo-card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; min-width: 120px; flex: 1;
+  }
+  .vendas-resumo-card .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .vendas-resumo-card .valor { font-size: 17px; font-weight: 700; margin-top: 2px; }
+  details.vendas-resumo-card > summary { list-style: none; cursor: pointer; }
+  details.vendas-resumo-card > summary::-webkit-details-marker { display: none; }
+  .vendas-tabela-preco { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px; }
+  .vendas-tabela-preco th { font-size: 10px; color: var(--muted); text-transform: uppercase; padding: 5px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+  .vendas-tabela-preco td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+  .vendas-tabela-preco tr:last-child td { border-bottom: none; }
+
+  /* --- Chart --- */
+  .price-chart-wrap { background: var(--bg); border-radius: 8px; padding: 12px; overflow: hidden; position: relative; }
+  .price-chart svg { width: 100%; height: 280px; display: block; }
+  .price-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+  .price-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+
+  /* --- Tooltip --- */
+  .chart-tooltip {
+    position: fixed; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.3);
+    pointer-events: none; z-index: 9999; min-width: 190px; font-size: 12px; display: none;
+  }
+  .chart-tooltip-date { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+  .chart-tooltip-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .chart-tooltip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .chart-tooltip-label { color: var(--muted); flex: 1; }
+  .chart-tooltip-valor { font-weight: 700; }
+
+  .mono { font-family: "SF Mono", "Fira Mono", monospace; }
+</style>
+</head>
+<body>
+
+<h2>Preview — Gráfico Preço × Vendas</h2>
+
+<!-- Selector -->
+<div class="vendas-selector">
+  <span style="font-size:11px;color:var(--muted);white-space:nowrap">Visualização:</span>
+  <select id="vendas-modo-select" onchange="_setVendasModo(this.value)">
+    <option value="combined">Preço + Vendas</option>
+    <option value="concorrentes">Top 5 concorrentes</option>
+  </select>
+</div>
+
+<!-- Resumo -->
+<div id="vendas-resumo-wrap"></div>
+
+<!-- Chart -->
+<div id="vendas-chart-wrap" class="price-chart-wrap"></div>
+
+<script>
+// ── Helpers ──────────────────────────────────────────────────────────────
+function brl(v) {
+  return (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function _fmtHoraOuData(iso, periodo) {
+  try {
+    const d = new Date(iso);
+    if (periodo === '7d' || periodo === '30d')
+      return d.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'});
+    return d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+  } catch { return ''; }
+}
+function _fmtTooltipDate(iso, periodo) {
+  try {
+    const d = new Date(iso);
+    const dias  = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+    const meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    const dow = dias[d.getDay()], dia = d.getDate(), mes = meses[d.getMonth()];
+    if (periodo === '7d' || periodo === '30d') return `${dow}, ${dia} ${mes}.`;
+    const h = String(d.getHours()).padStart(2,'0'), m = String(d.getMinutes()).padStart(2,'0');
+    return `${dow}, ${dia} ${mes}. — ${h}:${m}h`;
+  } catch { return ''; }
+}
+
+// ── Estado ───────────────────────────────────────────────────────────────
+let _vendaChartData = { buckets: [], periodo: '7d', modo: 'combined' };
+let _chartVendasModo = 'combined';
+
+// ── Mock data: 48 snapshots de 30 min nos últimos 7 dias ──────────────────
+function _gerarMock() {
+  const agora = new Date();
+  const buckets = [];
+  // Preços oscilando entre R$289 e R$319
+  const precos = [299,299,295,295,289,289,295,299,309,309,315,319,319,315,309,305,305,299,299,295,289,289,295,299,305,309,315,319,319,315,309,305,299,295,289,289,289,295,299,305,309,315,319,319,315,309,305,299];
+  // Vendas: picos em horários comerciais
+  const vendasBase = [0,0,0,1,0,2,3,5,8,12,15,18,22,19,14,10,8,12,16,20,24,28,22,18,14,10,6,3,1,0,2,4,8,12,18,22,26,30,28,24,20,16,12,8,5,3,1,0];
+
+  for (let i = 0; i < 48; i++) {
+    const ts = new Date(agora.getTime() - (47 - i) * 3.5 * 60 * 60 * 1000);
+    const un = vendasBase[i] + Math.floor(Math.random() * 3);
+    const preco = precos[i] + (Math.random() > 0.8 ? (Math.random() > 0.5 ? 2 : -2) : 0);
+    const receita = un * preco;
+    buckets.push({
+      ts:             ts.toISOString(),
+      preco_snapshot: preco,
+      preco_medio:    un > 0 ? preco - (Math.random() > 0.85 ? 1.50 : 0) : null,
+      unidades:       un,
+      receita:        Math.round(receita * 100) / 100,
+    });
+  }
+  return buckets;
+}
+
+const MOCK_BUCKETS = _gerarMock();
+const MOCK_RESUMO = (() => {
+  const totalUn  = MOCK_BUCKETS.reduce((s, b) => s + b.unidades, 0);
+  const totalRec = MOCK_BUCKETS.reduce((s, b) => s + b.receita,  0);
+  const porPreco = {};
+  MOCK_BUCKETS.forEach(b => {
+    const k = b.preco_snapshot;
+    if (!porPreco[k]) porPreco[k] = { preco: k, unidades: 0, receita: 0 };
+    porPreco[k].unidades += b.unidades;
+    porPreco[k].receita  += b.receita;
+  });
+  return {
+    total_unidades: totalUn,
+    total_receita:  Math.round(totalRec * 100) / 100,
+    por_preco: Object.values(porPreco).sort((a, b) => b.unidades - a.unidades),
+  };
+})();
+
+// ── Tooltip hover ─────────────────────────────────────────────────────────
+function onVendasChartMove(event) {
+  const { buckets, periodo } = _vendaChartData;
+  if (!buckets.length) return;
+  const svgEl   = event.currentTarget.closest('svg');
+  const svgRect = svgEl.getBoundingClientRect();
+  const svgX    = (event.clientX - svgRect.left) / svgRect.width * 800;
+  const padL = 60, padR = 55, innerW = 800 - padL - padR, n = buckets.length;
+  const idx    = Math.max(0, Math.min(n - 1, Math.round((svgX - padL) / innerW * (n - 1))));
+  const bucket = buckets[idx];
+  if (!bucket) return;
+
+  const xPos = padL + (n > 1 ? (idx / (n - 1)) * innerW : innerW / 2);
+  const cur  = document.getElementById('vendas-cursor-line');
+  if (cur) { cur.setAttribute('x1', xPos.toFixed(1)); cur.setAttribute('x2', xPos.toFixed(1)); cur.setAttribute('visibility','visible'); }
+
+  let rows = '';
+  if ((bucket.unidades || 0) > 0) {
+    rows += `<div class="chart-tooltip-row">
+      <span class="chart-tooltip-dot" style="background:var(--blue)"></span>
+      <span class="chart-tooltip-label">Vendas</span>
+      <span class="chart-tooltip-valor">${bucket.unidades} un</span>
+    </div>
+    <div class="chart-tooltip-row">
+      <span class="chart-tooltip-dot" style="background:var(--blue);opacity:.45"></span>
+      <span class="chart-tooltip-label">Receita</span>
+      <span class="chart-tooltip-valor">${brl(bucket.receita || 0)}</span>
+    </div>`;
+  }
+  if (bucket.preco_snapshot) {
+    rows += `<div class="chart-tooltip-row">
+      <span class="chart-tooltip-dot" style="background:rgba(250,204,21,.9)"></span>
+      <span class="chart-tooltip-label">Preço</span>
+      <span class="chart-tooltip-valor">${brl(bucket.preco_snapshot)}</span>
+    </div>`;
+    if (bucket.preco_medio && Math.abs(bucket.preco_medio - bucket.preco_snapshot) > 0.05) {
+      rows += `<div class="chart-tooltip-row">
+        <span class="chart-tooltip-dot" style="background:transparent;border:1px dashed rgba(250,204,21,.6)"></span>
+        <span class="chart-tooltip-label">Preço médio pedidos</span>
+        <span class="chart-tooltip-valor">${brl(bucket.preco_medio)}</span>
+      </div>`;
+    }
+  }
+
+  const tt = document.getElementById('vendas-hover-tooltip');
+  if (!tt) return;
+  tt.innerHTML = `<div class="chart-tooltip-date">${_fmtTooltipDate(bucket.ts, periodo)}</div>${rows}`;
+  tt.style.display = 'block';
+  const tw = 210;
+  const tx = (event.clientX + tw + 20 > window.innerWidth) ? event.clientX - tw - 12 : event.clientX + 14;
+  tt.style.left = `${tx}px`;
+  tt.style.top  = `${Math.max(10, event.clientY - 50)}px`;
+}
+function onVendasChartLeave() {
+  const tt = document.getElementById('vendas-hover-tooltip'); if (tt) tt.style.display = 'none';
+  const c  = document.getElementById('vendas-cursor-line');   if (c)  c.setAttribute('visibility','hidden');
+}
+
+// ── renderPriceVendasChart ────────────────────────────────────────────────
+function renderPriceVendasChart(buckets, periodo, modo) {
+  _vendaChartData = { buckets, periodo, modo };
+
+  const W = 800, H = 260, padL = 60, padR = 55, padT = 22, padB = 42;
+  const innerW = W - padL - padR, innerH = H - padT - padB, n = buckets.length;
+  const barW = Math.max(3, (innerW / Math.max(n, 1)) * 0.6);
+
+  const precos = buckets.map(b => b.preco_snapshot).filter(v => v > 0);
+  let minP = Math.min(...precos), maxP = Math.max(...precos);
+  const spanP = maxP - minP || 1;
+  minP = Math.max(0, minP - spanP * 0.2); maxP += spanP * 0.2;
+
+  const valVendas = buckets.map(b => b.unidades || 0);
+  const maxV = Math.max(...valVendas, 0.001);
+
+  const xPos  = i => padL + (n > 1 ? (i / (n - 1)) * innerW : innerW / 2);
+  const yPosP = v => padT + innerH - ((v - minP) / (maxP - minP)) * innerH;
+  const yPosV = v => padT + innerH - (v / maxV) * innerH * 0.92;
+
+  const nGrids = 4;
+  const grids = Array.from({length: nGrids + 1}, (_, i) => {
+    const y = padT + innerH * (1 - i / nGrids);
+    return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${(W-padR).toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-dasharray="2,3" opacity=".5"/>`;
+  });
+
+  const leftLabels = Array.from({length: nGrids + 1}, (_, i) => {
+    const val = minP + (maxP - minP) * (i / nGrids);
+    const y   = yPosP(val);
+    return `<text x="${padL - 5}" y="${(y + 4).toFixed(1)}" text-anchor="end" fill="var(--muted)" font-size="10">${val.toFixed(0)}</text>`;
+  });
+
+  const rightLabels = Array.from({length: nGrids + 1}, (_, i) => {
+    const val = maxV * (i / nGrids);
+    const y   = padT + innerH * (1 - i / nGrids);
+    return `<text x="${W - padR + 6}" y="${(y + 4).toFixed(1)}" fill="var(--blue)" font-size="10">${val.toFixed(0)}</text>`;
+  });
+
+  const bars = buckets.map((b, i) => {
+    const v = b.unidades || 0;
+    if (v <= 0) return '';
+    const x = xPos(i) - barW / 2, yTop = yPosV(v), h = Math.max(2, padT + innerH - yTop);
+    return `<rect x="${x.toFixed(1)}" y="${yTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="var(--blue)" opacity=".65" rx="2"/>`;
+  }).join('');
+
+  const pts = buckets.map((b, i) => b.preco_snapshot > 0 ? {x: xPos(i), y: yPosP(b.preco_snapshot)} : null).filter(Boolean);
+  let linhaPreco = '';
+  if (pts.length > 1) {
+    const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    linhaPreco  = `<path d="${pathD}" fill="none" stroke="rgba(250,204,21,.9)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+    linhaPreco += pts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="rgba(250,204,21,.9)" stroke="var(--surface)" stroke-width="1.5"/>`).join('');
+  }
+
+  const stride = Math.max(1, Math.floor(n / 10));
+  const xLabels = buckets.map((b, i) => {
+    if (i % stride !== 0) return '';
+    return `<text x="${xPos(i).toFixed(1)}" y="${(H - padB + 16).toFixed(1)}" text-anchor="middle" fill="var(--muted)" font-size="9">${_fmtHoraOuData(b.ts, periodo)}</text>`;
+  }).join('');
+
+  const lblLeft  = `<text transform="rotate(-90)" x="${-(padT + innerH/2)}" y="13" text-anchor="middle" fill="rgba(250,204,21,.6)" font-size="9">Preço (R$)</text>`;
+  const lblRight = `<text transform="rotate(90)" x="${padT + innerH/2}" y="${-(W - 4)}" text-anchor="middle" fill="var(--blue)" font-size="9" opacity=".7">Unidades</text>`;
+  const cursorLine = `<line id="vendas-cursor-line" x1="0" y1="${padT}" x2="0" y2="${(padT + innerH).toFixed(1)}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3,3" opacity=".6" visibility="hidden"/>`;
+  const hitZone    = `<rect x="${padL}" y="${padT}" width="${innerW}" height="${innerH}" fill="transparent" style="cursor:crosshair" onmousemove="onVendasChartMove(event)" onmouseleave="onVendasChartLeave()"/>`;
+
+  return `<div class="price-chart-wrap" style="position:relative">
+    <div id="vendas-hover-tooltip" class="chart-tooltip"></div>
+    <div class="price-chart">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+        ${grids.join('')}${leftLabels.join('')}${rightLabels.join('')}
+        ${lblLeft}${lblRight}${bars}${linhaPreco}${cursorLine}${xLabels}${hitZone}
+      </svg>
+    </div>
+    <div class="price-legend" style="gap:16px">
+      <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px">
+        <span style="width:14px;height:8px;background:var(--blue);opacity:.65;border-radius:2px;display:inline-block"></span>Un. vendidas
+      </span>
+      <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px">
+        <span style="width:14px;height:2px;background:rgba(250,204,21,.9);display:inline-block;border-radius:2px"></span>Preço
+      </span>
+    </div>
+  </div>`;
+}
+
+// ── renderVendasResumo ────────────────────────────────────────────────────
+function renderVendasResumo(resumo, periodo) {
+  const per = periodo || '7d';
+  const totalUn  = resumo?.total_unidades || 0;
+  const totalRec = resumo?.total_receita  || 0;
+  const ticket   = totalUn > 0 ? totalRec / totalUn : 0;
+  const porPreco = (resumo?.por_preco || []).filter(p => p.unidades > 0);
+  const perLabel = { '24h': 'Hoje', '7d': '7 dias', '30d': '30 dias' };
+  const pLbl = perLabel[per] || per;
+
+  const filtro = `<div class="vendas-periodo-filter">
+    ${['24h','7d','30d'].map(p => `<button class="vendas-periodo-btn${p===per?' active':''}" onclick="mudarPeriodo('${p}')">${perLabel[p]}</button>`).join('')}
+  </div>`;
+
+  let tabelaHtml = '';
+  if (porPreco.length) {
+    const linhas = porPreco.slice(0,10).map(p => {
+      const ptc = totalUn > 0 ? (p.unidades / totalUn * 100).toFixed(0) : 0;
+      return `<tr>
+        <td class="mono">${brl(p.preco)}</td>
+        <td style="text-align:center">${p.unidades} un</td>
+        <td style="text-align:center;color:var(--muted)">${ptc}%</td>
+        <td class="mono" style="color:var(--green)">${brl(p.receita)}</td>
+      </tr>`;
+    }).join('');
+    tabelaHtml = `<table class="vendas-tabela-preco" style="margin-top:10px">
+      <thead><tr><th>Preço</th><th style="text-align:center">Un.</th><th style="text-align:center">%</th><th>Receita</th></tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>`;
+  }
+
+  return `${filtro}<div class="vendas-resumo">
+    <div class="vendas-resumo-card">
+      <div class="label">Un. vendidas (${pLbl})</div>
+      <div class="valor" style="color:var(--green)">${totalUn.toLocaleString('pt-BR')}</div>
+    </div>
+    <div class="vendas-resumo-card">
+      <div class="label">Receita (${pLbl})</div>
+      <div class="valor" style="color:var(--accent)">${brl(totalRec)}</div>
+    </div>
+    <details class="vendas-resumo-card" style="list-style:none">
+      <summary style="list-style:none;display:block;cursor:pointer;user-select:none">
+        <div class="label">Ticket médio ▾</div>
+        <div class="valor">${brl(ticket)}</div>
+      </summary>
+      ${tabelaHtml}
+    </details>
+  </div>`;
+}
+
+// ── Wiring ────────────────────────────────────────────────────────────────
+function _setVendasModo(modo) { _chartVendasModo = modo; renderTudo(modo); }
+function mudarPeriodo(p)      { renderTudo(_chartVendasModo, p); }
+
+function renderTudo(modo, periodo) {
+  periodo = periodo || '7d';
+  document.getElementById('vendas-resumo-wrap').innerHTML = renderVendasResumo(MOCK_RESUMO, periodo);
+  document.getElementById('vendas-chart-wrap').innerHTML  = renderPriceVendasChart(MOCK_BUCKETS, periodo, modo || 'combined');
+}
+
+renderTudo('combined', '7d');
+</script>
+</body>
+</html>

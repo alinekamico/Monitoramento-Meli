@@ -1,0 +1,3072 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Central de Promoções ML</title>
+  <style>
+    :root {
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --border:   #2a2d3a;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --accent:   #facc15;
+      --green:    #22c55e;
+      --red:      #ef4444;
+      --blue:     #3b82f6;
+      --orange:   #f97316;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      min-height: 100vh;
+    }
+
+    /* HEADER */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .logo-text { font-size: 15px; font-weight: 600; color: var(--text); }
+    .logo-sub  { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+    .header-right { display: flex; align-items: center; gap: 12px; }
+
+    #last-updated {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    #btn-refresh {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: opacity 0.15s;
+    }
+    #btn-refresh:hover  { opacity: 0.85; }
+    #btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .spin { animation: spin 0.8s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* MAIN */
+    main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
+
+    /* CARDS */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .card-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .card-value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+    .card-value.green  { color: var(--green); }
+    .card-value.red    { color: var(--red); }
+    .card-value.blue   { color: var(--blue); }
+    .card-value.orange { color: var(--orange); }
+    .card-value.yellow { color: var(--accent); }
+
+    /* FILTERS */
+    .filters {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .filter-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .filter-btn:hover  { border-color: var(--accent); color: var(--text); }
+    .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(250,204,21,0.08); }
+
+    .search-box {
+      margin-left: auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      outline: none;
+      width: 180px;
+    }
+    .search-box:focus { border-color: var(--accent); }
+
+    /* TABLE */
+    /* Container externo: SEM overflow para que o sticky do thead use
+       a viewport como contexto (e o top:110px reflita o header+tabs). */
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    table {
+      width: 100%;
+      /* border-collapse: separate é necessário porque "collapse" tem
+         comportamento esquisito com sticky em alguns navegadores
+         (a borda do thead some quando ele cola). */
+      border-collapse: separate;
+      border-spacing: 0;
+      min-width: 900px;
+    }
+
+    thead th {
+      background: var(--bg);
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+      /* Cabeçalho fixo ao rolar — fica logo abaixo das tabs (top:65px+~45px) */
+      position: sticky;
+      top: 110px;
+      z-index: 50;
+      box-shadow: 0 1px 0 var(--border);
+    }
+    thead th:hover { color: var(--text); }
+    thead th.sort-asc::after  { content: " ↑"; color: var(--accent); }
+    thead th.sort-desc::after { content: " ↓"; color: var(--accent); }
+
+    tbody tr {
+      transition: background 0.1s;
+    }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
+    /* Com border-collapse: separate, a borda inferior precisa estar
+       na célula (td), não na linha (tr). */
+    tbody td { border-bottom: 1px solid var(--border); }
+    tbody tr:last-child td { border-bottom: none; }
+
+    td { padding: 10px 12px; vertical-align: middle; white-space: nowrap; }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .tag-aceitar  { background: rgba(34,197,94,0.15);  color: var(--green); }
+    .tag-recusar  { background: rgba(239,68,68,0.15);  color: var(--red);   }
+    .tag-ativa    { background: rgba(59,130,246,0.15); color: var(--blue);  }
+    .tag-candidata{ background: rgba(249,115,22,0.12); color: var(--orange);}
+    .tag-erro     { background: rgba(239,68,68,0.1);   color: var(--red);   }
+
+    .rc-bar {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .rc-fill {
+      height: 4px;
+      border-radius: 2px;
+      min-width: 2px;
+    }
+
+    .mono { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; }
+
+    .stock-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 4px;
+    }
+    .stock-yes { background: var(--green); }
+    .stock-no  { background: var(--muted); }
+
+    /* EMPTY / ERROR states */
+    .state-msg {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+    .state-msg .emoji { font-size: 36px; margin-bottom: 12px; }
+    .state-msg p { font-size: 13px; }
+    .state-msg small { font-size: 11px; }
+
+    /* RC color thresholds */
+    .rc-high   { color: var(--green); }
+    .rc-mid    { color: var(--accent); }
+    .rc-low    { color: var(--red); }
+
+    /* =================================================================
+       Aba Buybox — extensão do MVP. Estilos abaixo não afetam Campanhas.
+       ================================================================= */
+
+    /* Nav de abas */
+    .tabs {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      gap: 4px;
+      position: sticky;
+      top: 65px;
+      z-index: 99;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      padding: 12px 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+    }
+    .tab-btn:hover  { color: var(--text); }
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* Status indicators da aba Buybox */
+    .bx-status {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    .bx-status.buybox  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .bx-status.ameaca  { background: var(--accent); }
+    .bx-status.fora    { background: var(--red); }
+    .bx-status.off     { background: var(--muted); }
+
+    .tag-bx-buybox    { background: rgba(34,197,94,0.15);  color: var(--green); }
+    .tag-bx-ameaca    { background: rgba(250,204,21,0.15); color: var(--accent); }
+    .tag-bx-fora      { background: rgba(239,68,68,0.15);  color: var(--red);  }
+    .tag-bx-off       { background: rgba(100,116,139,0.15); color: var(--muted); }
+    .tag-oportunidade { background: rgba(59,130,246,0.15); color: var(--blue);  }
+
+    .diff-pos { color: var(--green); }   /* você está mais barato */
+    .diff-neg { color: var(--red);   }   /* você está mais caro */
+
+    .full-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      background: rgba(59,130,246,0.15);
+      color: var(--blue);
+      font-size: 9px;
+      font-weight: 600;
+      border-radius: 3px;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+
+    .ico-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 10px;
+      border-radius: 5px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .ico-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Botão "Coletar agora" — destaque na cor accent */
+    .btn-collect {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: opacity 0.15s;
+    }
+    .btn-collect:hover    { opacity: 0.85; }
+    .btn-collect:disabled { opacity: 0.6; cursor: progress; }
+    .btn-collect.danger   { background: var(--red); color: #fff; }
+
+    /* Dropdown de seleção de SKUs para coleta manual */
+    .collect-wrap { position: relative; }
+    .collect-dropdown {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: calc(100% + 6px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      min-width: 280px;
+      max-width: 360px;
+      z-index: 200;
+      overflow: hidden;
+    }
+    .collect-dropdown.show { display: block; }
+
+    .collect-header {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .collect-header strong {
+      font-size: 12px;
+      color: var(--text);
+    }
+    .collect-actions-line {
+      display: flex;
+      gap: 6px;
+    }
+    .collect-mini-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      cursor: pointer;
+    }
+    .collect-mini-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+    .collect-list {
+      max-height: 260px;
+      overflow-y: auto;
+      padding: 6px 0;
+    }
+    .collect-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--text);
+      transition: background 0.1s;
+    }
+    .collect-item:hover { background: rgba(255,255,255,0.04); }
+    .collect-item input { cursor: pointer; accent-color: var(--accent); }
+    .collect-item .sku-badge {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-weight: 600;
+      flex: 1;
+    }
+    .collect-item .sku-tag {
+      font-size: 9px;
+      color: var(--muted);
+      padding: 1px 6px;
+      background: var(--bg);
+      border-radius: 3px;
+    }
+    .collect-item .sku-novo {
+      color: var(--blue);
+      background: rgba(59,130,246,0.12);
+    }
+
+    .collect-footer {
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .collect-footer .resumo {
+      flex: 1;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .collect-footer button {
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+    }
+    .collect-footer .cancel {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .collect-footer .confirm {
+      background: var(--accent);
+      color: #000;
+    }
+    .collect-footer .confirm:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* Banner de status temporário (toast) */
+    #bx-toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      color: var(--text);
+      padding: 12px 18px;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      font-size: 13px;
+      max-width: 380px;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.2s, transform 0.2s;
+      z-index: 2000;
+      pointer-events: none;
+    }
+    #bx-toast.show { opacity: 1; transform: translateY(0); }
+    #bx-toast.ok      { border-left-color: var(--green); }
+    #bx-toast.err     { border-left-color: var(--red); }
+    #bx-toast.running { border-left-color: var(--blue); }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 1000;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 40px 20px;
+      overflow-y: auto;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      max-width: 1000px;
+      width: 100%;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    }
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-header h2 { font-size: 16px; font-weight: 600; }
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 22px;
+      cursor: pointer;
+      padding: 0 6px;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { padding: 20px; }
+    .modal-body h3 {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 16px 0 8px;
+    }
+    .modal-body h3:first-child { margin-top: 0; }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .detail-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+    }
+    .detail-item .label {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .detail-item .value {
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    .top5-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .top5-table th, .top5-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    .top5-table th {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      /* Dentro do modal — não usa sticky da tabela principal */
+      position: static !important;
+      top: auto !important;
+      z-index: auto !important;
+      box-shadow: none !important;
+      background: var(--surface);
+    }
+    .top5-row-nos {
+      background: rgba(250,204,21,0.06);
+      font-weight: 600;
+    }
+    .top5-row-nos td:first-child::before {
+      content: "▸ ";
+      color: var(--accent);
+    }
+
+    /* Campanhas do produto no modal de detalhe */
+    .campanhas-mini {
+      background: var(--bg);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .campanhas-mini table {
+      width: 100%;
+      min-width: 0;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+    .campanhas-mini th {
+      background: var(--surface);
+      padding: 8px 10px;
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      position: static !important;  /* dentro do modal não usa sticky */
+    }
+    .campanhas-mini td {
+      padding: 8px 10px;
+      font-size: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .campanhas-mini tr:last-child td { border-bottom: none; }
+    .campanha-mini-loading {
+      padding: 20px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    /* Breakdown da margem — tabela linha a linha do cálculo do PDV */
+    .breakdown {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 8px;
+    }
+    @media (max-width: 720px) { .breakdown { grid-template-columns: 1fr; } }
+
+    .breakdown-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .breakdown-card.descartado { opacity: 0.7; }
+    .breakdown-head {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .breakdown-head .titulo { font-size: 13px; font-weight: 600; }
+    .breakdown-head .preco-destaque {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .breakdown-rows {
+      padding: 8px 0;
+    }
+    .breakdown-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 14px;
+      font-size: 12px;
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .breakdown-row.label-only {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .breakdown-row .label { color: var(--muted); }
+    .breakdown-row .valor { font-weight: 500; }
+    .breakdown-row.negativo .valor { color: var(--red); }
+    .breakdown-row.positivo .valor { color: var(--green); }
+    .breakdown-row.destaque {
+      border-top: 1px solid var(--border);
+      margin-top: 4px;
+      padding-top: 8px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .breakdown-row.destaque .label { color: var(--text); font-weight: 600; }
+    .breakdown-rebate-info {
+      padding: 8px 14px;
+      background: rgba(59,130,246,0.06);
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text);
+      line-height: 1.4;
+    }
+    .breakdown-rebate-info.alerta {
+      background: rgba(239,68,68,0.08);
+      color: var(--red);
+    }
+    .breakdown-descartado-tag {
+      background: rgba(239,68,68,0.15);
+      color: var(--red);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    /* Filtros de período (dos gráficos no modal) */
+    .periodo-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .periodo-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .periodo-btn:hover  { color: var(--text); border-color: var(--accent); }
+    .periodo-btn.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: rgba(250,204,21,0.08);
+    }
+    .periodo-custom {
+      display: none;
+      gap: 6px;
+      align-items: center;
+      margin-left: 8px;
+    }
+    .periodo-custom.show { display: flex; }
+    .periodo-custom input[type="date"] {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: inherit;
+    }
+    .periodo-custom input[type="date"]:focus { border-color: var(--accent); outline: none; }
+    .periodo-custom button {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* Mini-gráfico de posição (largura por barra fixa, não estica) */
+    .pos-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      height: 70px;
+      padding: 10px 12px;
+      background: var(--bg);
+      border-radius: 6px;
+      overflow-x: auto;
+    }
+    .pos-bar {
+      width: 16px;
+      flex-shrink: 0;
+      border-radius: 3px 3px 0 0;
+      background: var(--blue);
+      transition: opacity 0.15s;
+      position: relative;
+    }
+    .pos-bar:hover { opacity: 0.7; }
+    .pos-bar.no-pos {
+      background: var(--muted);
+      opacity: 0.35;
+      height: 6px !important;
+      align-self: flex-end;
+    }
+    .pos-chart-axis {
+      display: flex;
+      gap: 4px;
+      padding: 4px 12px 0;
+      font-size: 9px;
+      color: var(--muted);
+    }
+    .pos-chart-axis span {
+      width: 16px;
+      flex-shrink: 0;
+      text-align: center;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+    }
+
+    /* Miniatura do anúncio na lista */
+    .sku-com-foto {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .sku-thumb {
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      object-fit: cover;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sku-thumb-placeholder {
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    /* Foto maior no header do modal */
+    .modal-header-foto {
+      width: 56px;
+      height: 56px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      margin-right: 12px;
+    }
+
+    /* Posição em destaque: chip grande + cor por contexto */
+    .pos-chip {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 56px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      line-height: 1.1;
+      border: 1px solid;
+    }
+    .pos-chip .pos-num {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .pos-chip .pos-den {
+      font-size: 10px;
+      opacity: 0.7;
+      margin-top: 1px;
+    }
+    .pos-buybox {
+      background: rgba(34,197,94,0.18);
+      color: var(--green);
+      border-color: rgba(34,197,94,0.45);
+      box-shadow: 0 0 0 2px rgba(34,197,94,0.12);
+    }
+    .pos-top3 {
+      background: rgba(250,204,21,0.15);
+      color: var(--accent);
+      border-color: rgba(250,204,21,0.4);
+    }
+    .pos-fora {
+      background: rgba(239,68,68,0.15);
+      color: var(--red);
+      border-color: rgba(239,68,68,0.4);
+    }
+    .pos-vazio {
+      background: rgba(100,116,139,0.12);
+      color: var(--muted);
+      border-color: var(--border);
+      min-height: 50px;
+    }
+    .pos-vazio .pos-num { font-size: 20px; }
+
+    /* Gráfico de preços históricos */
+    .price-chart-wrap {
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+    .price-chart svg { width: 100%; height: 280px; display: block; }
+    .price-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 8px;
+      font-size: 11px;
+    }
+    .price-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+    }
+    .price-legend-item.is-us {
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .price-legend-dot {
+      width: 12px; height: 3px;
+      border-radius: 2px;
+    }
+
+    /* --- Linha clicável na aba Campanhas → navega para Buybox --- */
+    #pane-campanhas tbody tr.camp-row { cursor: pointer; }
+    #pane-campanhas tbody tr.camp-row:hover td {
+      background: rgba(250,204,21,0.04);
+    }
+
+    /* --- Badge de campanhas disponíveis no painel Buybox --- */
+    .thumb-wrap { position: relative; display: inline-block; flex-shrink: 0; }
+    .campanha-count-badge {
+      position: absolute;
+      top: -7px; left: -7px;
+      min-width: 20px; height: 20px;
+      background: var(--blue);
+      color: #fff;
+      font-size: 10px; font-weight: 700;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 4px;
+      z-index: 2;
+      border: 1.5px solid var(--bg);
+      cursor: default;
+    }
+
+    /* --- Gráfico Preço × Vendas --- */
+    .vendas-selector {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .vendas-selector select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      width: auto;
+    }
+    .vendas-selector select:focus { outline: none; border-color: var(--accent); }
+
+    .vendas-periodo-filter { display: flex; gap: 4px; margin-bottom: 8px; }
+    .vendas-periodo-btn {
+      padding: 3px 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 11px;
+      cursor: pointer;
+      background: var(--bg);
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+    .vendas-periodo-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(250,204,21,0.08); }
+
+    /* Tooltip do gráfico */
+    .chart-tooltip {
+      position: fixed;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      pointer-events: none;
+      z-index: 9999;
+      min-width: 190px;
+      font-size: 12px;
+      display: none;
+    }
+    .chart-tooltip-date { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+    .chart-tooltip-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    .chart-tooltip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .chart-tooltip-label { color: var(--muted); flex: 1; }
+    .chart-tooltip-valor { font-weight: 700; }
+
+    .vendas-resumo {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .vendas-resumo-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      min-width: 120px;
+      flex: 1;
+    }
+    .vendas-resumo-card .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .vendas-resumo-card .valor { font-size: 17px; font-weight: 700; margin-top: 2px; }
+    details.vendas-resumo-card > summary { list-style: none; }
+    details.vendas-resumo-card > summary::-webkit-details-marker { display: none; }
+    .vendas-tabela-preco {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      margin-top: 8px;
+    }
+    .vendas-tabela-preco th {
+      font-size: 10px; color: var(--muted); text-transform: uppercase;
+      padding: 5px 8px; border-bottom: 1px solid var(--border); text-align: left;
+    }
+    .vendas-tabela-preco td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+    .vendas-tabela-preco tr:last-child td { border-bottom: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🛒</div>
+    <div>
+      <div class="logo-text">Central de Promoções ML</div>
+      <div class="logo-sub">Painel local — dados em tempo real</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span id="last-updated">—</span>
+    <button id="btn-refresh" onclick="loadActiveTab()">
+      <span id="refresh-icon">↻</span> Atualizar
+    </button>
+  </div>
+</header>
+
+<!-- Nav de abas -->
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="campanhas" onclick="switchTab('campanhas',this)">Campanhas</button>
+  <button class="tab-btn"        data-tab="buybox"    onclick="switchTab('buybox',this)">Buybox</button>
+</nav>
+
+<!-- ABA CAMPANHAS (preservada do original) -->
+<main id="pane-campanhas" class="tab-pane active">
+  <!-- CARDS -->
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">Total</div>
+      <div class="card-value" id="c-total">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Ativas</div>
+      <div class="card-value blue" id="c-ativas">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Candidatas</div>
+      <div class="card-value orange" id="c-candidatas">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Aceitar</div>
+      <div class="card-value green" id="c-aceitar">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Recusar</div>
+      <div class="card-value red" id="c-recusar">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">RC mínimo</div>
+      <div class="card-value yellow" id="c-rcmin">—</div>
+    </div>
+  </div>
+
+  <!-- FILTERS -->
+  <div class="filters">
+    <button class="filter-btn active" data-filter="all"     onclick="setFilter('all',this)">Todos</button>
+    <button class="filter-btn"        data-filter="ATIVA"   onclick="setFilter('ATIVA',this)">Ativas</button>
+    <button class="filter-btn"        data-filter="ACEITAR" onclick="setFilter('ACEITAR',this)">Aceitar</button>
+    <button class="filter-btn"        data-filter="RECUSAR" onclick="setFilter('RECUSAR',this)">Recusar</button>
+    <button class="filter-btn"        data-filter="estoque" onclick="setFilter('estoque',this)">Com estoque</button>
+    <input class="search-box" id="search" type="text" placeholder="Buscar SKU ou MLB…" oninput="render()" />
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th onclick="sortBy('sku')">SKU</th>
+          <th onclick="sortBy('item_id')">MLB</th>
+          <th onclick="sortBy('campanha_nome')">Campanha</th>
+          <th onclick="sortBy('status')">Status</th>
+          <th onclick="sortBy('has_stock')">Estoque</th>
+          <th onclick="sortBy('preco_campanha')">Preço</th>
+          <th onclick="sortBy('custo')">Custo</th>
+          <th onclick="sortBy('rebate')">Rebate</th>
+          <th onclick="sortBy('comissao')">Comissão</th>
+          <th onclick="sortBy('frete')">Frete</th>
+          <th onclick="sortBy('lucro_bruto')">Lucro</th>
+          <th onclick="sortBy('margem_pct')">Margem%</th>
+          <th onclick="sortBy('rc_pct')">RC%</th>
+          <th onclick="sortBy('finish_date')">Vigência</th>
+          <th onclick="sortBy('decisao')">Decisão</th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <tr><td colspan="15">
+          <div class="state-msg">
+            <div class="emoji">📡</div>
+            <p>Clique em <strong>Atualizar</strong> para carregar as campanhas.</p>
+          </div>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<!-- ABA BUYBOX -->
+<main id="pane-buybox" class="tab-pane">
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">Total</div>
+      <div class="card-value" id="bx-total">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Com buybox</div>
+      <div class="card-value green" id="bx-buybox">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Em risco</div>
+      <div class="card-value red" id="bx-risco">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Off-catálogo</div>
+      <div class="card-value" id="bx-off" style="color:var(--muted)">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Oportunidades</div>
+      <div class="card-value blue" id="bx-oport">—</div>
+    </div>
+  </div>
+
+  <div class="filters">
+    <button class="filter-btn active" data-bx-filter="all"          onclick="setBxFilter('all',this)">Todos</button>
+    <button class="filter-btn"        data-bx-filter="buybox"       onclick="setBxFilter('buybox',this)">Com buybox</button>
+    <button class="filter-btn"        data-bx-filter="risco"        onclick="setBxFilter('risco',this)">Em risco</button>
+    <button class="filter-btn"        data-bx-filter="oportunidade" onclick="setBxFilter('oportunidade',this)">Oportunidade</button>
+    <button class="filter-btn"        data-bx-filter="off"          onclick="setBxFilter('off',this)">Off-catálogo</button>
+    <button class="filter-btn"        data-bx-filter="estoque"      onclick="setBxFilter('estoque',this)">Com estoque</button>
+    <input class="search-box" id="bx-search" type="text" placeholder="Buscar SKU ou MLB…" oninput="renderBx()" />
+    <div class="collect-wrap">
+      <button class="btn-collect" id="btn-coletar" onclick="toggleColetarDropdown(event)"
+              title="Seleciona SKUs e dispara coleta sob demanda.">
+        <span id="coletar-icon">⟳</span>
+        <span id="coletar-texto">Coletar agora</span>
+        <span style="font-size:9px">▾</span>
+      </button>
+      <div class="collect-dropdown" id="collect-dropdown" onclick="event.stopPropagation()">
+        <div class="collect-header">
+          <strong>Selecione os SKUs</strong>
+          <div class="collect-actions-line">
+            <button class="collect-mini-btn" onclick="marcarTodos(true)">Todos</button>
+            <button class="collect-mini-btn" onclick="marcarTodos(false)">Limpar</button>
+          </div>
+        </div>
+        <div class="collect-list" id="collect-list">
+          <div style="padding:14px;text-align:center;color:var(--muted);font-size:12px">
+            Carregando…
+          </div>
+        </div>
+        <div class="collect-footer">
+          <span class="resumo" id="collect-resumo">0 selecionado(s)</span>
+          <button class="cancel" onclick="fecharColetarDropdown()">Cancelar</button>
+          <button class="confirm" id="btn-confirmar-coleta" onclick="coletarAgora()" disabled>
+            Coletar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th onclick="sortBx('categoria_status')">Status</th>
+          <th onclick="sortBx('sku')">SKU</th>
+          <th onclick="sortBx('nossa_posicao')">Posição</th>
+          <th onclick="sortBx('estoque_proprio')">Estoque</th>
+          <th onclick="sortBx('preco_atual')">Seu preço</th>
+          <th onclick="sortBx('preco_1o')">Preço 1º</th>
+          <th onclick="sortBx('diff_para_1o_rs')">Diff 1º</th>
+          <th onclick="sortBx('diff_para_2o_rs')">Diff 2º</th>
+          <th onclick="sortBx('margem_atual_pct')">Margem</th>
+          <th onclick="sortBx('preco_otimo_sugerido')">Preço ótimo</th>
+          <th>Ação</th>
+        </tr>
+      </thead>
+      <tbody id="bx-tbody">
+        <tr><td colspan="11">
+          <div class="state-msg">
+            <div class="emoji">📊</div>
+            <p>Clique em <strong>Atualizar</strong> para carregar os snapshots.</p>
+            <small>Os dados vêm do coletor (data/buybox.db)</small>
+          </div>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<!-- Toast de feedback -->
+<div id="bx-toast"></div>
+
+<!-- Modal de detalhe -->
+<div class="modal-overlay" id="bx-modal" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2 id="bx-modal-title">Detalhe do anúncio</h2>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="bx-modal-body">
+      <div class="empty-state">Carregando…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = 'http://localhost:5000/api/campaigns';
+  const API_BX_LISTA   = 'http://localhost:5000/api/buybox/lista';
+  const API_BX_SKU     = (sku, itemId) => `http://localhost:5000/api/buybox/sku/${sku}?item_id=${itemId}`;
+  const API_BX_COLETAR    = 'http://localhost:5000/api/buybox/forcar-coleta';
+  const API_BX_SKUS_CFG   = 'http://localhost:5000/api/buybox/skus-configurados';
+  const API_BX_CAMPANHAS  = (sku, itemId) => `http://localhost:5000/api/buybox/sku/${sku}/campanhas?item_id=${itemId}`;
+  const API_BX_PRAZOS     = (sku, itemId) => `http://localhost:5000/api/buybox/sku/${sku}/prazos?item_id=${itemId}`;
+  const API_BX_VENDAS     = (sku, itemId) => `http://localhost:5000/api/buybox/sku/${sku}/vendas?item_id=${itemId}`;
+
+  let allData    = [];
+  let rcMin      = 50;
+  let activeFilter = 'all';
+  let sortCol    = 'rc_pct';
+  let sortDir    = -1; // -1 = desc, 1 = asc
+
+  let campaignBadgesMap = {};          // item_id → nº campanhas ACEITAR
+  let _chartVendasModo  = 'combined';  // 'combined'|'price'|'units'|'revenue'|'concorrentes'
+  let _vendaPeriodo     = '7d';        // período independente do seletor de vendas
+  let _vendaChartData   = { buckets: [], periodo: '', modo: '' }; // dados ativos para hover
+  let _priceChartData   = { series: [], timestamps: [], periodo: '' }; // dados do gráfico de concorrentes
+
+  // -----------------------------------------------------------------------
+  // Load
+  // -----------------------------------------------------------------------
+  async function loadData() {
+    const btn  = document.getElementById('btn-refresh');
+    const icon = document.getElementById('refresh-icon');
+    btn.disabled = true;
+    icon.classList.add('spin');
+    icon.textContent = '↻';
+
+    try {
+      const res  = await fetch(API);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+
+      allData = json.results || [];
+      rcMin   = json.rc_minimo || 50;
+
+      // summary cards
+      const s = json.summary || {};
+      document.getElementById('c-total').textContent     = s.total      ?? allData.length;
+      document.getElementById('c-ativas').textContent    = s.ativas     ?? '—';
+      document.getElementById('c-candidatas').textContent= s.candidatas ?? '—';
+      document.getElementById('c-aceitar').textContent   = s.aceitar    ?? '—';
+      document.getElementById('c-recusar').textContent   = s.recusar    ?? '—';
+      document.getElementById('c-rcmin').textContent     = rcMin + '%';
+
+      const ts = new Date(json.timestamp * 1000);
+      document.getElementById('last-updated').textContent =
+        'Atualizado às ' + ts.toLocaleTimeString('pt-BR');
+
+      render();
+      _buildCampaignBadges();
+      if (activeTab === 'buybox') renderBx();
+    } catch (err) {
+      showError(err);
+    } finally {
+      btn.disabled = false;
+      icon.classList.remove('spin');
+    }
+  }
+
+  function _buildCampaignBadges() {
+    campaignBadgesMap = {};
+    for (const r of allData) {
+      if (r.status === 'CANDIDATA' && r.decisao === 'ACEITAR') {
+        campaignBadgesMap[r.item_id] = (campaignBadgesMap[r.item_id] || 0) + 1;
+      }
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Filter + Sort + Render
+  // -----------------------------------------------------------------------
+  function setFilter(f, el) {
+    activeFilter = f;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    render();
+  }
+
+  function sortBy(col) {
+    if (sortCol === col) { sortDir *= -1; }
+    else { sortCol = col; sortDir = -1; }
+    document.querySelectorAll('thead th').forEach(th => {
+      th.classList.remove('sort-asc', 'sort-desc');
+    });
+    const idx = ['sku','item_id','campanha_nome','status','has_stock',
+                  'preco_campanha','custo','rebate','comissao','frete',
+                  'lucro_bruto','margem_pct','rc_pct','finish_date','decisao'];
+    const thList = document.querySelectorAll('thead th');
+    const i = idx.indexOf(col);
+    if (i >= 0) thList[i].classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+    render();
+  }
+
+  function filtered() {
+    const q = document.getElementById('search').value.toLowerCase();
+    return allData.filter(r => {
+      if (q && !(r.sku?.toLowerCase().includes(q) || r.item_id?.toLowerCase().includes(q))) return false;
+      if (activeFilter === 'ATIVA')   return r.status === 'ATIVA';
+      if (activeFilter === 'ACEITAR') return r.decisao === 'ACEITAR';
+      if (activeFilter === 'RECUSAR') return r.decisao === 'RECUSAR';
+      if (activeFilter === 'estoque') return r.has_stock === true;
+      return true;
+    });
+  }
+
+  function sorted(rows) {
+    return [...rows].sort((a, b) => {
+      let va = a[sortCol], vb = b[sortCol];
+      if (va === null || va === undefined) va = '';
+      if (vb === null || vb === undefined) vb = '';
+      if (typeof va === 'boolean') va = va ? 1 : 0;
+      if (typeof vb === 'boolean') vb = vb ? 1 : 0;
+      if (va < vb) return -sortDir;
+      if (va > vb) return  sortDir;
+      return 0;
+    });
+  }
+
+  function render() {
+    const rows = sorted(filtered());
+    const tbody = document.getElementById('tbody');
+
+    if (rows.length === 0 && allData.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="15">
+        <div class="state-msg">
+          <div class="emoji">📡</div>
+          <p>Clique em <strong>Atualizar</strong> para carregar as campanhas.</p>
+        </div>
+      </td></tr>`;
+      return;
+    }
+
+    if (rows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="15">
+        <div class="state-msg">
+          <div class="emoji">🔍</div>
+          <p>Nenhum resultado para o filtro atual.</p>
+        </div>
+      </td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = rows.map(r => {
+      if (r.status === 'ERRO') return rowErro(r);
+      return rowNormal(r);
+    }).join('');
+  }
+
+  // -----------------------------------------------------------------------
+  // Row builders
+  // -----------------------------------------------------------------------
+  function brl(v) {
+    if (v == null) return '—';
+    return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
+  }
+
+  function pct(v) {
+    if (v == null) return '—';
+    return Number(v).toFixed(1) + '%';
+  }
+
+  function rcClass(v) {
+    if (v >= rcMin)      return 'rc-high';
+    if (v >= rcMin * .7) return 'rc-mid';
+    return 'rc-low';
+  }
+
+  function rcBar(v) {
+    const capped = Math.min(Math.max(v, 0), 150);
+    const color  = v >= rcMin ? 'var(--green)' : v >= rcMin * 0.7 ? 'var(--accent)' : 'var(--red)';
+    return `<div class="rc-bar">
+      <span class="${rcClass(v)} mono">${pct(v)}</span>
+      <div class="rc-fill" style="width:${capped / 1.5}px; background:${color}"></div>
+    </div>`;
+  }
+
+  function statusTag(r) {
+    if (r.status === 'ATIVA')      return `<span class="tag tag-ativa">ATIVA</span>`;
+    if (r.status === 'CANDIDATA')  return `<span class="tag tag-candidata">CANDIDATA</span>`;
+    return `<span class="tag tag-erro">ERRO</span>`;
+  }
+
+  function decisaoTag(r) {
+    if (r.decisao === 'ACEITAR') return `<span class="tag tag-aceitar" title="${r.motivo}">ACEITAR</span>`;
+    if (r.decisao === 'RECUSAR') return `<span class="tag tag-recusar" title="${r.motivo}">RECUSAR</span>`;
+    if (r.status === 'ATIVA')    return `<span style="color:var(--muted);font-size:11px">participando</span>`;
+    return '—';
+  }
+
+  function rowNormal(r) {
+    const stockDot = r.has_stock
+      ? `<span class="stock-dot stock-yes"></span>${r.quantidade}`
+      : `<span class="stock-dot stock-no"></span>0`;
+
+    const fullBadge = r.is_full ? ' <span style="font-size:9px;color:var(--blue)">FULL</span>' : '';
+
+    return `<tr class="camp-row" onclick="navegarParaBuybox('${r.item_id}')" title="Ver ${r.item_id} no painel Buybox">
+      <td><strong>${r.sku}</strong></td>
+      <td class="mono" style="color:var(--muted)">${r.item_id}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${r.campanha_nome}">${r.campanha_nome}${fullBadge}</td>
+      <td>${statusTag(r)}</td>
+      <td>${stockDot}</td>
+      <td class="mono">${brl(r.preco_campanha)}</td>
+      <td class="mono" style="color:var(--muted)">${brl(r.custo)}</td>
+      <td class="mono" style="color:var(--green)">${brl(r.rebate)}</td>
+      <td class="mono" style="color:var(--muted)">${brl(r.comissao)}</td>
+      <td class="mono" style="color:var(--muted)">${brl(r.frete)}</td>
+      <td class="mono ${r.lucro_bruto >= 0 ? 'rc-high' : 'rc-low'}">${brl(r.lucro_bruto)}</td>
+      <td class="mono">${pct(r.margem_pct)}</td>
+      <td>${rcBar(r.rc_pct)}</td>
+      <td style="font-size:11px;${vigenciaExpiraEmBreve(r.finish_date) ? 'color:var(--accent);font-weight:600' : 'color:var(--muted)'}">${formatarVigencia(r.start_date, r.finish_date)}</td>
+      <td>${decisaoTag(r)}</td>
+    </tr>`;
+  }
+
+  function rowErro(r) {
+    return `<tr class="camp-row" style="opacity:0.6" onclick="navegarParaBuybox('${r.item_id}')" title="Ver ${r.item_id} no painel Buybox">
+      <td><strong>${r.sku}</strong></td>
+      <td class="mono" style="color:var(--muted)">${r.item_id}</td>
+      <td colspan="12" style="color:var(--red);font-size:11px">⚠ ${r.erro}</td>
+      <td></td>
+    </tr>`;
+  }
+
+  function navegarParaBuybox(itemId) {
+    const btnBuybox = document.querySelector('[data-tab="buybox"]');
+    if (btnBuybox) switchTab('buybox', btnBuybox);
+    requestAnimationFrame(() => {
+      const searchEl = document.getElementById('bx-search');
+      if (searchEl) {
+        searchEl.value = itemId;
+        renderBx();
+      }
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Error state
+  // -----------------------------------------------------------------------
+  function showError(err) {
+    document.getElementById('tbody').innerHTML = `<tr><td colspan="15">
+      <div class="state-msg">
+        <div class="emoji">⚠️</div>
+        <p>Não foi possível conectar ao servidor local.</p>
+        <small style="margin-top:8px;display:block">
+          Certifique-se de que <code>python server.py</code> está rodando.<br/>
+          Erro: ${err.message}
+        </small>
+      </div>
+    </td></tr>`;
+  }
+
+  // =====================================================================
+  // ABA BUYBOX
+  // =====================================================================
+
+  let activeTab = 'campanhas';
+  let bxData = [];
+  let bxFilter = 'all';
+  let bxSortCol = 'sku';
+  let bxSortDir = 1;
+
+  function switchTab(name, el) {
+    activeTab = name;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('pane-' + name).classList.add('active');
+    loadActiveTab();
+  }
+
+  function loadActiveTab() {
+    if (activeTab === 'campanhas') return loadData();
+    if (activeTab === 'buybox')    return loadBuyboxData();
+  }
+
+  async function loadBuyboxData() {
+    const btn  = document.getElementById('btn-refresh');
+    const icon = document.getElementById('refresh-icon');
+    btn.disabled = true;
+    icon.classList.add('spin');
+
+    try {
+      const res = await fetch(API_BX_LISTA);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+
+      bxData = json.results || [];
+      const s = json.summary || {};
+      document.getElementById('bx-total').textContent  = s.total ?? bxData.length;
+      document.getElementById('bx-buybox').textContent = s.com_buybox ?? '—';
+      document.getElementById('bx-risco').textContent  = s.em_risco ?? '—';
+      document.getElementById('bx-off').textContent    = s.off_catalogo ?? '—';
+      document.getElementById('bx-oport').textContent  = s.oportunidades ?? '—';
+
+      const ts = new Date(json.timestamp * 1000);
+      document.getElementById('last-updated').textContent =
+        'Atualizado às ' + ts.toLocaleTimeString('pt-BR');
+
+      renderBx();
+    } catch (err) {
+      showBxError(err);
+    } finally {
+      btn.disabled = false;
+      icon.classList.remove('spin');
+    }
+  }
+
+  function setBxFilter(f, el) {
+    bxFilter = f;
+    document.querySelectorAll('[data-bx-filter]').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    renderBx();
+  }
+
+  function sortBx(col) {
+    if (bxSortCol === col) { bxSortDir *= -1; }
+    else { bxSortCol = col; bxSortDir = 1; }
+    renderBx();
+  }
+
+  function bxFiltered() {
+    const q = document.getElementById('bx-search').value.toLowerCase();
+    return bxData.filter(r => {
+      if (q && !((r.sku || '').toLowerCase().includes(q)
+                 || (r.item_id || '').toLowerCase().includes(q))) return false;
+      switch (bxFilter) {
+        case 'buybox':       return r.categoria_status === 'buybox';
+        case 'risco':        return r.categoria_status === 'ameaca' || r.categoria_status === 'fora';
+        case 'off':          return r.categoria_status === 'off';
+        case 'estoque':      return (r.estoque_proprio || 0) > 0;
+        case 'oportunidade': return r.preco_otimo_sugerido != null
+                                    && r.preco_otimo_sugerido > (r.preco_atual || 0);
+        default:             return true;
+      }
+    });
+  }
+
+  function bxSorted(rows) {
+    return [...rows].sort((a, b) => {
+      let va = a[bxSortCol], vb = b[bxSortCol];
+      if (va == null) va = bxSortDir > 0 ? Infinity : -Infinity;
+      if (vb == null) vb = bxSortDir > 0 ? Infinity : -Infinity;
+      if (typeof va === 'boolean') va = va ? 1 : 0;
+      if (typeof vb === 'boolean') vb = vb ? 1 : 0;
+      if (va < vb) return -bxSortDir;
+      if (va > vb) return  bxSortDir;
+      return 0;
+    });
+  }
+
+  function renderBx() {
+    const rows = bxSorted(bxFiltered());
+    const tbody = document.getElementById('bx-tbody');
+
+    if (rows.length === 0 && bxData.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="11">
+        <div class="state-msg">
+          <div class="emoji">📊</div>
+          <p>Clique em <strong>Atualizar</strong> para carregar os snapshots.</p>
+          <small>Os dados vêm do coletor (data/buybox.db)</small>
+        </div>
+      </td></tr>`;
+      return;
+    }
+
+    if (rows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="11">
+        <div class="state-msg">
+          <div class="emoji">🔍</div>
+          <p>Nenhum resultado para o filtro atual.</p>
+        </div>
+      </td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = rows.map(bxRowHtml).join('');
+  }
+
+  function bxStatusTag(r) {
+    const map = {
+      buybox: ['BUYBOX',     'tag-bx-buybox'],
+      ameaca: ['EM RISCO',   'tag-bx-ameaca'],
+      fora:   ['FORA DO TOP','tag-bx-fora'],
+      off:    ['OFF-CATÁLOGO','tag-bx-off'],
+    };
+    const [label, cls] = map[r.categoria_status] || ['—', ''];
+    return `<span class="bx-status ${r.categoria_status}"></span><span class="tag ${cls}">${label}</span>`;
+  }
+
+  function diffCell(rs, pct) {
+    if (rs == null || pct == null) return '<span style="color:var(--muted)">—</span>';
+    const cls = rs < 0 ? 'diff-pos' : (rs > 0 ? 'diff-neg' : '');
+    const sinal = rs > 0 ? '+' : '';
+    return `<span class="${cls} mono">${sinal}${brl(rs)} (${pct.toFixed(1)}%)</span>`;
+  }
+
+  function otimoCell(r) {
+    if (r.preco_otimo_sugerido == null) {
+      return `<span style="color:var(--muted)" title="${r.motivo_sugestao || ''}">—</span>`;
+    }
+    const subir = r.preco_otimo_sugerido > (r.preco_atual || 0);
+    const tag = subir ? '<span class="tag tag-oportunidade" style="margin-left:6px">SUBIR</span>' : '';
+    return `<span class="mono">${brl(r.preco_otimo_sugerido)}</span>${tag}
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">
+              RC ${r.rc_no_preco_otimo?.toFixed(1)}%
+            </div>`;
+  }
+
+  // Classificação canônica por RC: RC >= 60 verde, 50-60 amarelo, < 50 vermelho.
+  // Usado tanto para a célula Margem quanto para o RC em si — assim os dois
+  // sempre concordam visualmente (a métrica de decisão é o RC).
+  function corPorRC(rc) {
+    if (rc == null) return '';
+    if (rc >= 60) return 'rc-high';
+    if (rc >= 50) return 'rc-mid';
+    return 'rc-low';
+  }
+
+  function posicaoChipHtml(posicao, qtd, temBuybox) {
+    if (posicao == null) {
+      return `<div class="pos-chip pos-vazio"><span class="pos-num">—</span></div>`;
+    }
+    let cls = 'pos-fora';
+    if (temBuybox) cls = 'pos-buybox';
+    else if (posicao <= 3) cls = 'pos-top3';
+    const denominador = qtd ? `de ${qtd}` : '';
+    const sufixo = temBuybox ? 'BUYBOX' : (denominador || '');
+    return `<div class="pos-chip ${cls}" title="${temBuybox ? 'Buybox ativo' : `Posição ${posicao}`}">
+      <span class="pos-num">${posicao}º</span>
+      <span class="pos-den">${sufixo}</span>
+    </div>`;
+  }
+
+  function estoqueCell(r) {
+    const qtd = r.estoque_proprio ?? 0;
+    if (qtd === 0) {
+      return `<span style="color:var(--red);font-weight:600">
+        <span class="stock-dot stock-no"></span>0
+      </span>`;
+    }
+    const cor = qtd < 5 ? 'var(--accent)' : 'var(--green)';
+    return `<span style="color:${cor}">
+      <span class="stock-dot" style="background:${cor}"></span>${qtd}
+    </span>`;
+  }
+
+  function bxRowHtml(r) {
+    const tituloCurto = (r.titulo || '').slice(0, 38) + ((r.titulo || '').length > 38 ? '…' : '');
+    const fullBadge = r.is_full ? '<span class="full-badge">FULL</span>' : '';
+    // Rebate ≥ 5% recebe destaque visual (cor verde brilhante + ícone)
+    let rebateBadge = '';
+    if (r.rebate_pct > 0) {
+      const forte = r.rebate_pct >= 5;
+      rebateBadge = forte
+        ? `<span class="full-badge" style="background:linear-gradient(90deg,rgba(34,197,94,0.25),rgba(34,197,94,0.4));color:var(--green);box-shadow:0 0 4px rgba(34,197,94,0.4)" title="Campanha com rebate vantajoso (≥ 5%)">★ REBATE ${r.rebate_pct.toFixed(0)}%</span>`
+        : `<span class="full-badge" style="background:rgba(34,197,94,0.15);color:var(--green)">REBATE ${r.rebate_pct.toFixed(0)}%</span>`;
+    }
+    const cheioTag = r.preco_cheio && r.preco_cheio > r.preco_atual + 0.01
+      ? `<div style="font-size:10px;color:var(--muted);text-decoration:line-through">${brl(r.preco_cheio)}</div>`
+      : '';
+    const posicaoChip = posicaoChipHtml(r.nossa_posicao, r.qtd_concorrentes, r.tem_buybox);
+
+    const thumb = r.thumbnail_url
+      ? `<img class="sku-thumb" src="${escapeHtml(r.thumbnail_url)}" alt="${escapeHtml(r.sku)}" loading="lazy" onerror="this.outerHTML='<div class=\\'sku-thumb-placeholder\\'>📦</div>'">`
+      : `<div class="sku-thumb-placeholder">📦</div>`;
+
+    const badgeCount = campaignBadgesMap[r.item_id] || 0;
+    const campBadge  = badgeCount > 0
+      ? `<div class="campanha-count-badge" title="${badgeCount} campanha${badgeCount > 1 ? 's' : ''} disponível${badgeCount > 1 ? 'is' : ''} para aceitar (RC ≥ mínimo)">${badgeCount}</div>`
+      : '';
+
+    // Linha de "relevância" do produto (estrelas + total de reviews)
+    let relevancia = '';
+    if (r.reviews_rating && r.reviews_total) {
+      const stars = '★'.repeat(Math.round(r.reviews_rating));
+      relevancia = `<div style="font-size:10px;color:var(--muted);margin-top:2px">
+        <span style="color:var(--accent)">${stars}</span> ${r.reviews_rating.toFixed(1)}
+        <span style="opacity:0.7">(${r.reviews_total.toLocaleString('pt-BR')} avaliações)</span>
+      </div>`;
+    }
+
+    return `<tr>
+      <td>${bxStatusTag(r)}</td>
+      <td>
+        <div class="sku-com-foto">
+          <div class="thumb-wrap">${campBadge}${thumb}</div>
+          <div>
+            <strong>${r.sku}</strong>${fullBadge}${rebateBadge}
+            <div style="font-size:10px;color:var(--muted)">${r.item_id}</div>
+            <div style="font-size:11px;color:var(--text);margin-top:2px">${tituloCurto || ''}</div>
+            ${relevancia}
+          </div>
+        </div>
+      </td>
+      <td>${posicaoChip}</td>
+      <td>${estoqueCell(r)}</td>
+      <td class="mono">${brl(r.preco_atual)}${cheioTag}</td>
+      <td class="mono" style="color:var(--muted)">${brl(r.preco_1o)}</td>
+      <td>${diffCell(r.diff_para_1o_rs, r.diff_para_1o_pct)}</td>
+      <td>${diffCell(r.diff_para_2o_rs, r.diff_para_2o_pct)}</td>
+      <td class="mono ${corPorRC(r.rc_atual_pct)}">
+        ${pct(r.margem_atual_pct)}
+        <div class="${corPorRC(r.rc_atual_pct)}" style="font-size:10px;margin-top:2px">
+          RC ${r.rc_atual_pct?.toFixed(1)}%
+        </div>
+      </td>
+      <td>${otimoCell(r)}</td>
+      <td>
+        <button class="ico-btn" onclick="openBxDetail('${r.sku}','${r.item_id}')">Detalhe</button>
+      </td>
+    </tr>`;
+  }
+
+  // ---------- Coleta manual sob demanda (dropdown com checkboxes) ----------
+
+  let coletaEmAndamento = false;
+  let skusConfigurados = [];   // [{sku, tipo_anuncio, ja_coletado}, ...]
+  let skusDropdownAberto = false;
+
+  function showToast(mensagem, variante = 'ok', persistente = false) {
+    const el = document.getElementById('bx-toast');
+    el.className = '';
+    el.classList.add('show', variante);
+    el.innerHTML = mensagem;
+    if (!persistente) {
+      setTimeout(() => el.classList.remove('show'), 4500);
+    }
+  }
+
+  function hideToast() {
+    document.getElementById('bx-toast').classList.remove('show');
+  }
+
+  async function carregarSkusConfigurados() {
+    try {
+      const res = await fetch(API_BX_SKUS_CFG);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      skusConfigurados = json.skus || [];
+      renderSkusDropdown();
+    } catch (err) {
+      document.getElementById('collect-list').innerHTML =
+        `<div style="padding:14px;text-align:center;color:var(--red);font-size:12px">
+           Erro ao carregar SKUs: ${err.message}
+         </div>`;
+    }
+  }
+
+  function renderSkusDropdown() {
+    const lista = document.getElementById('collect-list');
+    if (skusConfigurados.length === 0) {
+      lista.innerHTML = `<div style="padding:14px;color:var(--muted);font-size:12px">Sem SKUs configurados</div>`;
+      return;
+    }
+    lista.innerHTML = skusConfigurados.map(item => {
+      const tagNovo = !item.ja_coletado
+        ? `<span class="sku-tag sku-novo">NOVO</span>`
+        : '';
+      return `<label class="collect-item">
+        <input type="checkbox" value="${item.sku}" onchange="atualizarResumoSelecao()">
+        <span class="sku-badge">${item.sku}</span>
+        <span class="sku-tag">${item.tipo_anuncio || ''}</span>
+        ${tagNovo}
+      </label>`;
+    }).join('');
+    atualizarResumoSelecao();
+  }
+
+  function _checkboxes() {
+    return [...document.querySelectorAll('#collect-list input[type=checkbox]')];
+  }
+
+  function _skusSelecionados() {
+    return _checkboxes().filter(c => c.checked).map(c => c.value);
+  }
+
+  function marcarTodos(estado) {
+    _checkboxes().forEach(c => c.checked = estado);
+    atualizarResumoSelecao();
+  }
+
+  function atualizarResumoSelecao() {
+    const selecionados = _skusSelecionados();
+    const total = skusConfigurados.length;
+    const resumo = document.getElementById('collect-resumo');
+    const btn    = document.getElementById('btn-confirmar-coleta');
+
+    if (selecionados.length === 0) {
+      resumo.textContent = `0 de ${total} selecionado(s)`;
+      btn.disabled = true;
+      btn.textContent = 'Coletar';
+    } else {
+      const tempo = selecionados.length === total
+        ? '~5 min'
+        : (selecionados.length * 12 < 60
+            ? `~${selecionados.length * 12}s`
+            : `~${Math.ceil(selecionados.length * 12 / 60)} min`);
+      const escopo = selecionados.length === total ? 'todos' : `${selecionados.length}`;
+      resumo.textContent = `${escopo} selecionado(s) — ${tempo}`;
+      btn.disabled = false;
+      btn.textContent = `Coletar (${selecionados.length})`;
+    }
+  }
+
+  function toggleColetarDropdown(ev) {
+    ev?.stopPropagation();
+    const dd = document.getElementById('collect-dropdown');
+    skusDropdownAberto = !skusDropdownAberto;
+    dd.classList.toggle('show', skusDropdownAberto);
+    if (skusDropdownAberto && skusConfigurados.length === 0) {
+      carregarSkusConfigurados();
+    }
+  }
+
+  function fecharColetarDropdown() {
+    skusDropdownAberto = false;
+    document.getElementById('collect-dropdown').classList.remove('show');
+  }
+
+  // Fecha o dropdown ao clicar fora
+  document.addEventListener('click', (ev) => {
+    if (!skusDropdownAberto) return;
+    const wrap = document.querySelector('.collect-wrap');
+    if (wrap && !wrap.contains(ev.target)) {
+      fecharColetarDropdown();
+    }
+  });
+
+  async function coletarAgora() {
+    if (coletaEmAndamento) return;
+    const skus = _skusSelecionados();
+    if (skus.length === 0) return;
+
+    const todos = skus.length === skusConfigurados.length;
+    const escopo = todos
+      ? `todos os ${skus.length} SKUs`
+      : `${skus.length} SKU(s): ${skus.join(', ')}`;
+
+    fecharColetarDropdown();
+
+    coletaEmAndamento = true;
+    const btn   = document.getElementById('btn-coletar');
+    const icon  = document.getElementById('coletar-icon');
+    const texto = document.getElementById('coletar-texto');
+    btn.disabled = true;
+    icon.classList.add('spin');
+    texto.textContent = 'Coletando…';
+
+    showToast(
+      `<strong>Coleta em andamento</strong><br>` +
+      `Escopo: ${escopo}<br>` +
+      `<small style="color:var(--muted)">Você pode navegar normalmente enquanto coleta.</small>`,
+      'running', true,
+    );
+
+    const inicio = Date.now();
+    try {
+      const body = todos ? '{}' : JSON.stringify({skus});
+      const res  = await fetch(API_BX_COLETAR, {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json'},
+        body,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const stats = await res.json();
+
+      const segundos = ((Date.now() - inicio) / 1000).toFixed(1);
+      const erros = stats.erros || 0;
+      const variante = erros > 0 ? 'err' : 'ok';
+
+      showToast(
+        `<strong>Coleta concluída em ${segundos}s</strong><br>` +
+        `${stats.skus_processados ?? 0} SKU(s) processado(s) | ` +
+        `${stats.snapshots_salvos ?? 0} snapshot(s) salvo(s) | ` +
+        `${stats.snapshots_ignorados ?? 0} duplicado(s) | ` +
+        `${erros} erro(s)`,
+        variante,
+      );
+
+      // Invalida o cache do dropdown (alguns SKUs podem ter mudado de
+      // status "NOVO" para já coletado)
+      skusConfigurados = [];
+      // Recarrega a lista para refletir os snapshots novos
+      await loadBuyboxData();
+    } catch (err) {
+      showToast(
+        `<strong>Falha na coleta</strong><br>` +
+        `${err.message}<br>` +
+        `<small style="color:var(--muted)">Verifique se o server.py está rodando e o .env preenchido.</small>`,
+        'err',
+      );
+    } finally {
+      coletaEmAndamento = false;
+      btn.disabled = false;
+      icon.classList.remove('spin');
+      texto.textContent = 'Coletar agora';
+    }
+  }
+
+  function showBxError(err) {
+    document.getElementById('bx-tbody').innerHTML = `<tr><td colspan="11">
+      <div class="state-msg">
+        <div class="emoji">⚠️</div>
+        <p>Não foi possível carregar snapshots.</p>
+        <small>Erro: ${err.message}</small>
+      </div>
+    </td></tr>`;
+  }
+
+  // ---------- Modal de detalhe ----------
+
+  // Contexto do modal aberto — usado pelo filtro de período sem ter
+  // que reabrir o modal todo (só recarrega seções de gráfico).
+  let bxModalCtx = {sku: null, itemId: null, periodo: '24h', desde: null, ate: null};
+
+  async function openBxDetail(sku, itemId) {
+    const overlay = document.getElementById('bx-modal');
+    const body    = document.getElementById('bx-modal-body');
+    const title   = document.getElementById('bx-modal-title');
+    title.textContent = `${sku} — ${itemId}`;
+    body.innerHTML = '<div class="empty-state">Carregando…</div>';
+    overlay.classList.add('show');
+
+    // Reset do contexto a cada abertura
+    bxModalCtx = {sku, itemId, periodo: '24h', desde: null, ate: null,
+                  vendasData: null, serieConcorrentes: []};
+    _chartVendasModo = 'combined';
+    _vendaPeriodo    = '7d';
+    _vendaChartData  = { buckets: [], periodo: '', modo: '' };
+
+    try {
+      const res = await fetch(API_BX_SKU(sku, itemId));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      bxModalCtx.serieConcorrentes = json.serie_concorrentes || [];
+      body.innerHTML = renderBxDetail(json);
+      carregarCampanhasDoSku(sku, itemId);
+      carregarPrazosDoTop5(sku, itemId);
+      carregarVendasDoSku(sku, itemId, '7d');
+    } catch (err) {
+      body.innerHTML = `<div class="empty-state">⚠️ ${err.message}</div>`;
+    }
+  }
+
+  // Refetch dos dados de histórico no período escolhido (24h/7d/30d/custom)
+  async function aplicarPeriodoModal(novo, btn) {
+    bxModalCtx.periodo = novo;
+    if (novo !== 'custom') {
+      bxModalCtx.desde = null;
+      bxModalCtx.ate = null;
+      document.getElementById('periodo-custom-inputs')?.classList.remove('show');
+    } else {
+      document.getElementById('periodo-custom-inputs')?.classList.add('show');
+      return; // espera o usuário escolher datas e clicar em "Aplicar"
+    }
+    document.querySelectorAll('[data-periodo]').forEach(b => b.classList.remove('active'));
+    btn?.classList.add('active');
+    await recarregarDadosHistorico();
+  }
+
+  async function aplicarPeriodoCustom() {
+    const d = document.getElementById('periodo-desde').value;
+    const a = document.getElementById('periodo-ate').value;
+    if (!d || !a) {
+      alert('Selecione data inicial e final.');
+      return;
+    }
+    if (d > a) {
+      alert('A data inicial precisa ser anterior à final.');
+      return;
+    }
+    bxModalCtx.desde = d;
+    bxModalCtx.ate = a;
+    bxModalCtx.periodo = 'custom';
+    await recarregarDadosHistorico();
+  }
+
+  async function recarregarDadosHistorico() {
+    const {sku, itemId, periodo, desde, ate} = bxModalCtx;
+    let url = `${API_BX_SKU(sku, itemId)}`;
+    if (periodo === 'custom' && desde && ate) {
+      url += `&periodo=custom&desde=${desde}&ate=${ate}`;
+    } else {
+      url += `&periodo=${periodo}`;
+    }
+    const elPos    = document.getElementById('grafico-posicao-wrap');
+    const elVendas = document.getElementById('vendas-chart-wrap');
+    if (elPos)    elPos.innerHTML    = '<div class="empty-state" style="padding:14px">Carregando…</div>';
+    if (elVendas) elVendas.innerHTML = '<div class="empty-state" style="padding:14px">Carregando…</div>';
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const historico = json.historico_periodo || json.historico_24h || [];
+      bxModalCtx.serieConcorrentes = json.serie_concorrentes || [];
+      if (elPos) elPos.innerHTML = renderPosicaoChart(historico);
+      if (elVendas) {
+        if (_chartVendasModo === 'concorrentes') {
+          elVendas.innerHTML = renderPriceChart(bxModalCtx.serieConcorrentes);
+        } else {
+          const periodoVendas = (bxModalCtx.periodo === 'custom') ? '7d' : bxModalCtx.periodo;
+          await carregarVendasDoSku(bxModalCtx.sku, bxModalCtx.itemId, periodoVendas);
+        }
+      }
+    } catch (err) {
+      if (elPos)    elPos.innerHTML    = `<div class="empty-state">⚠ ${err.message}</div>`;
+      if (elVendas) elVendas.innerHTML = `<div class="empty-state">⚠ ${err.message}</div>`;
+    }
+  }
+
+  function closeModal(ev) {
+    if (ev && ev.target.id !== 'bx-modal' && ev.type === 'click') {
+      // só fecha se clicou no overlay (não no conteúdo)
+      if (ev.target.closest('.modal')) return;
+    }
+    document.getElementById('bx-modal').classList.remove('show');
+  }
+
+  // -------- Gráfico de barras: posição últimas N (com cor por mudança) --------
+
+  function _fmtHoraOuData(iso, periodo) {
+    try {
+      const d = new Date(iso);
+      // Períodos longos: mostra dia/mês; curtos: hora:min
+      if (periodo === '7d' || periodo === '30d' || periodo === 'custom') {
+        return d.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
+      }
+      return d.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
+    } catch { return ''; }
+  }
+
+  function renderPosicaoChart(historico) {
+    if (!historico || historico.length === 0) {
+      return '<div class="empty-state" style="padding:12px">Sem histórico no período</div>';
+    }
+    const periodo = bxModalCtx?.periodo || '24h';
+    const maxPos = Math.max(...historico.map(h => h.nossa_posicao || 1), 5);
+
+    // Barras + cor por mudança
+    let posAnterior = null;
+    const bars = historico.map(h => {
+      if (h.nossa_posicao == null) {
+        posAnterior = null;
+        return `<div class="pos-bar no-pos" title="${_fmtHoraOuData(h.coletado_em, periodo)} — fora do top 5"></div>`;
+      }
+      const altura = 100 - (h.nossa_posicao - 1) * (90 / maxPos);
+
+      // Cor por contexto de competição
+      let cor;
+      if (h.tem_buybox) cor = 'var(--green)';
+      else if (h.nossa_posicao <= 3) cor = 'var(--accent)';
+      else cor = 'var(--red)';
+
+      // Marca visualmente mudança de posição
+      let borda = '';
+      let setaTitulo = '';
+      if (posAnterior !== null && h.nossa_posicao !== posAnterior) {
+        if (h.nossa_posicao < posAnterior) {
+          borda = 'border-left:3px solid var(--green); padding-left:1px;';
+          setaTitulo = ' ↑ subiu';
+        } else {
+          borda = 'border-left:3px solid var(--red); padding-left:1px;';
+          setaTitulo = ' ↓ desceu';
+        }
+      }
+      const tip = `${_fmtHoraOuData(h.coletado_em, periodo)} — pos ${h.nossa_posicao}${h.tem_buybox ? ' (buybox)' : ''}${setaTitulo}`;
+      posAnterior = h.nossa_posicao;
+      return `<div class="pos-bar" style="height:${altura}%;background:${cor};${borda}" title="${tip}"></div>`;
+    }).join('');
+
+    // Eixo: para muitos pontos, mostra só alguns labels
+    const stride = Math.max(1, Math.floor(historico.length / 12));
+    const eixo = historico.map((h, i) =>
+      `<span title="${h.coletado_em}">${i % stride === 0 ? _fmtHoraOuData(h.coletado_em, periodo) : ''}</span>`
+    ).join('');
+
+    const rotuloPeriodo = {
+      '24h': 'últimas 24h', '7d': '7 dias', '30d': '30 dias', 'custom': 'período',
+    }[periodo] || 'período';
+
+    return `<div class="pos-chart">${bars}</div>
+      <div class="pos-chart-axis">${eixo}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:6px">
+        ${historico.length} snapshot${historico.length === 1 ? '' : 's'} — ${rotuloPeriodo} ·
+        <span style="color:var(--green)">verde</span>: buybox |
+        <span style="color:var(--accent)">amarelo</span>: top 3 |
+        <span style="color:var(--red)">vermelho</span>: fora do top 3 ·
+        borda <span style="color:var(--green)">↑</span>/<span style="color:var(--red)">↓</span> indica mudança de posição
+      </div>`;
+  }
+
+  // -------- Gráfico SVG de preços históricos por concorrente --------
+
+  // Paleta de cores estável; índice 0 reservado pra nossa série (accent)
+  const PRICE_PALETTE = ['#3b82f6', '#ec4899', '#a855f7', '#06b6d4', '#10b981', '#f97316', '#8b5cf6'];
+
+  function _corDaSerie(idx, eNos) {
+    if (eNos) return 'var(--accent)';
+    return PRICE_PALETTE[idx % PRICE_PALETTE.length];
+  }
+
+  function renderPriceChart(series) {
+    if (!series || series.length === 0) {
+      return '<div class="empty-state" style="padding:16px">Sem histórico de preços</div>';
+    }
+
+    // Coleta todos os timestamps únicos ordenados (eixo X)
+    const timestamps = [...new Set(
+      series.flatMap(s => s.pontos.map(p => p.coletado_em))
+    )].sort();
+
+    if (timestamps.length === 0) {
+      return '<div class="empty-state" style="padding:16px">Sem pontos para plotar</div>';
+    }
+
+    // Preço mínimo e máximo do conjunto (eixo Y)
+    let minPreco = Infinity, maxPreco = -Infinity;
+    series.forEach(s => s.pontos.forEach(p => {
+      if (p.preco < minPreco) minPreco = p.preco;
+      if (p.preco > maxPreco) maxPreco = p.preco;
+    }));
+    // Margem de 5% no Y para não colar linhas no topo/base
+    const span = maxPreco - minPreco || 1;
+    minPreco -= span * 0.08;
+    maxPreco += span * 0.08;
+
+    // Viewport SVG
+    const W = 800, H = 260;
+    const padL = 60, padR = 16, padT = 16, padB = 40;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+
+    const xPos = (ts) => {
+      const idx = timestamps.indexOf(ts);
+      if (timestamps.length === 1) return padL + innerW / 2;
+      return padL + (idx / (timestamps.length - 1)) * innerW;
+    };
+    const yPos = (preco) => {
+      return padT + innerH - ((preco - minPreco) / (maxPreco - minPreco)) * innerH;
+    };
+
+    // Gridlines (5 níveis horizontais)
+    const nGrids = 5;
+    const grids = [];
+    for (let i = 0; i <= nGrids; i++) {
+      const valor = minPreco + (maxPreco - minPreco) * (i / nGrids);
+      const y = yPos(valor);
+      grids.push(`<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="var(--border)" stroke-dasharray="2,3"/>`);
+      grids.push(`<text x="${padL - 8}" y="${y + 4}" text-anchor="end" fill="var(--muted)" font-size="10" font-family="SF Mono, monospace">${valor.toFixed(2)}</text>`);
+    }
+
+    // Eixo X: alterna entre HH:MM (períodos curtos) e DD/MM (longos). Para
+    // muitos pontos, mostra só alguns labels para evitar sobreposição.
+    const periodo = bxModalCtx?.periodo || '24h';
+    const strideX = Math.max(1, Math.floor(timestamps.length / 10));
+    const xAxisLabels = timestamps.map((ts, i) => {
+      if (i % strideX !== 0) return '';
+      const x = xPos(ts);
+      return `<text x="${x}" y="${H - padB + 16}" text-anchor="middle" fill="var(--muted)" font-size="9">${_fmtHoraOuData(ts, periodo)}</text>`;
+    }).join('');
+
+    // Guarda para o hover
+    _priceChartData = { series, timestamps, periodo };
+
+    // Polilinha por série
+    const linhas = series.map((serie, idx) => {
+      const cor = _corDaSerie(idx, serie.e_nos);
+      const stroke = serie.e_nos ? 3 : 2;
+      const pontosOrd = [...serie.pontos].sort((a, b) =>
+        a.coletado_em.localeCompare(b.coletado_em));
+      const pathD = pontosOrd.map((p, i) => {
+        const x = xPos(p.coletado_em).toFixed(1);
+        const y = yPos(p.preco).toFixed(1);
+        return `${i === 0 ? 'M' : 'L'}${x},${y}`;
+      }).join(' ');
+      const dots = pontosOrd.map(p => {
+        const x = xPos(p.coletado_em).toFixed(1);
+        const y = yPos(p.preco).toFixed(1);
+        return `<circle cx="${x}" cy="${y}" r="${serie.e_nos ? 4 : 3}" fill="${cor}" stroke="var(--surface)" stroke-width="1.5"/>`;
+      }).join('');
+      return `<g>
+        <path d="${pathD}" fill="none" stroke="${cor}" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+        ${dots}
+      </g>`;
+    }).join('');
+
+    // Linha cursor + zona de captura
+    const cursorLine = `<line id="price-cursor-line" x1="0" y1="${padT}" x2="0" y2="${padT + innerH}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3,3" opacity="0.6" visibility="hidden"/>`;
+    const hitZone    = `<rect x="${padL}" y="${padT}" width="${innerW}" height="${innerH}" fill="transparent" style="cursor:crosshair" onmousemove="onPriceChartMove(event)" onmouseleave="onPriceChartLeave()"/>`;
+
+    // Legenda
+    const legenda = series.map((s, idx) => {
+      const cor = _corDaSerie(idx, s.e_nos);
+      const nome = s.seller_nome + (s.e_nos ? ' (você)' : '');
+      return `<div class="price-legend-item ${s.e_nos ? 'is-us' : ''}">
+        <span class="price-legend-dot" style="background:${cor}"></span>${nome}
+      </div>`;
+    }).join('');
+
+    return `<div class="price-chart-wrap" style="position:relative">
+      <div id="price-hover-tooltip" class="chart-tooltip"></div>
+      <div class="price-chart">
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+          ${grids.join('')}
+          ${linhas}
+          ${cursorLine}
+          ${xAxisLabels}
+          ${hitZone}
+        </svg>
+      </div>
+      <div class="price-legend">${legenda}</div>
+    </div>`;
+  }
+
+  function onPriceChartMove(event) {
+    const { series, timestamps, periodo } = _priceChartData;
+    if (!timestamps.length) return;
+
+    const svgEl   = event.currentTarget.closest('svg');
+    const svgRect = svgEl.getBoundingClientRect();
+    const svgX    = (event.clientX - svgRect.left) / svgRect.width * 800;
+
+    const padL = 60, padR = 16, innerW = 800 - padL - padR;
+    const n    = timestamps.length;
+    const idx  = Math.max(0, Math.min(n - 1, Math.round((svgX - padL) / innerW * (n - 1))));
+    const ts   = timestamps[idx];
+
+    // Cursor
+    const xPos = n === 1 ? padL + innerW / 2 : padL + (idx / (n - 1)) * innerW;
+    const cursorLine = document.getElementById('price-cursor-line');
+    if (cursorLine) {
+      cursorLine.setAttribute('x1', xPos.toFixed(1));
+      cursorLine.setAttribute('x2', xPos.toFixed(1));
+      cursorLine.setAttribute('visibility', 'visible');
+    }
+
+    // Monta linhas do tooltip — uma por série que tenha ponto neste ts
+    const linhas = series.map((serie, sIdx) => {
+      const ponto = serie.pontos.find(p => p.coletado_em === ts);
+      if (!ponto) return '';
+      const cor  = _corDaSerie(sIdx, serie.e_nos);
+      const nome = serie.seller_nome + (serie.e_nos ? ' (você)' : '');
+      const pos  = ponto.posicao != null ? ` · pos ${ponto.posicao}` : '';
+      return `<div class="chart-tooltip-row">
+        <span class="chart-tooltip-dot" style="background:${cor}"></span>
+        <span class="chart-tooltip-label">${escapeHtml(nome)}${pos}</span>
+        <span class="chart-tooltip-valor">${brl(ponto.preco)}</span>
+      </div>`;
+    }).filter(Boolean).join('');
+
+    if (!linhas) return;
+
+    const tooltip = document.getElementById('price-hover-tooltip');
+    if (!tooltip) return;
+    tooltip.innerHTML = `<div class="chart-tooltip-date">${_fmtTooltipDate(ts, periodo)}</div>${linhas}`;
+    tooltip.style.display = 'block';
+
+    const tw = 230;
+    const tx = (event.clientX + tw + 20 > window.innerWidth)
+      ? event.clientX - tw - 12
+      : event.clientX + 14;
+    tooltip.style.left = `${tx}px`;
+    tooltip.style.top  = `${Math.max(10, event.clientY - 50)}px`;
+  }
+
+  function onPriceChartLeave() {
+    const tooltip = document.getElementById('price-hover-tooltip');
+    if (tooltip) tooltip.style.display = 'none';
+    const cursor  = document.getElementById('price-cursor-line');
+    if (cursor)  cursor.setAttribute('visibility', 'hidden');
+  }
+
+  // ---------- Vendas: carregamento e gráfico Preço × Vendas ----------
+
+  async function carregarVendasDoSku(sku, itemId, periodo) {
+    _vendaPeriodo = periodo;
+    const wrap       = document.getElementById('vendas-chart-wrap');
+    const resumoWrap = document.getElementById('vendas-resumo-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="empty-state" style="padding:14px">Carregando dados de vendas…</div>';
+    try {
+      const url = `${API_BX_VENDAS(sku, itemId)}&periodo=${periodo}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      bxModalCtx.vendasData = json;
+      if (resumoWrap) resumoWrap.innerHTML = renderVendasResumo(json.resumo, periodo);
+      _renderVendasChart();
+    } catch (err) {
+      if (wrap) wrap.innerHTML = `<div class="empty-state" style="padding:14px;color:var(--muted)">
+        Dados de vendas indisponíveis: ${err.message}
+      </div>`;
+    }
+  }
+
+  async function mudarPeriodoVendas(periodo) {
+    _vendaPeriodo = periodo;
+    await carregarVendasDoSku(bxModalCtx.sku, bxModalCtx.itemId, periodo);
+  }
+
+  function _setVendasModo(modo) {
+    _chartVendasModo = modo;
+    const sel = document.getElementById('vendas-modo-select');
+    if (sel && sel.value !== modo) sel.value = modo;
+    _renderVendasChart();
+  }
+
+  function _renderVendasChart() {
+    const wrap = document.getElementById('vendas-chart-wrap');
+    if (!wrap) return;
+
+    if (_chartVendasModo === 'concorrentes') {
+      const series = bxModalCtx.serieConcorrentes || [];
+      wrap.innerHTML = renderPriceChart(series);
+      return;
+    }
+
+    const data = bxModalCtx.vendasData;
+    if (!data || !data.buckets || data.buckets.length === 0) {
+      wrap.innerHTML = '<div class="empty-state" style="padding:14px">Sem dados de vendas no período</div>';
+      return;
+    }
+    // Usa o período dos dados de vendas (independente do filtro da aba posição)
+    const periodoVendas = data.periodo || _vendaPeriodo || '7d';
+    wrap.innerHTML = renderPriceVendasChart(data.buckets, periodoVendas, _chartVendasModo);
+  }
+
+  function renderVendasResumo(resumo, periodo) {
+    const per      = periodo || _vendaPeriodo || '7d';
+    const totalUn  = resumo?.total_unidades || 0;
+    const totalRec = resumo?.total_receita  || 0;
+    const ticket   = totalUn > 0 ? totalRec / totalUn : 0;
+    const porPreco = (resumo?.por_preco || []).filter(p => p.unidades > 0);
+
+    const perLabel = { '24h': 'Hoje', '7d': '7 dias', '30d': '30 dias' };
+    const pLbl = perLabel[per] || per;
+
+    const periodoFilter = `<div class="vendas-periodo-filter">
+      ${['24h','7d','30d'].map(p => `<button class="vendas-periodo-btn${p === per ? ' active' : ''}"
+        onclick="mudarPeriodoVendas('${p}')">${perLabel[p]}</button>`).join('')}
+    </div>`;
+
+    // Tabela de vendas por faixa de preço (dentro do card expandível)
+    let tabelaHtml = '<p style="font-size:11px;color:var(--muted);margin:8px 0 0">Sem pedidos no período.</p>';
+    if (porPreco.length > 0) {
+      const linhas = porPreco.slice(0, 10).map(p => {
+        const ptc = totalUn > 0 ? (p.unidades / totalUn * 100).toFixed(0) : 0;
+        return `<tr>
+          <td class="mono">${brl(p.preco)}</td>
+          <td style="text-align:center">${p.unidades} un</td>
+          <td style="text-align:center;color:var(--muted)">${ptc}%</td>
+          <td class="mono" style="color:var(--green)">${brl(p.receita)}</td>
+        </tr>`;
+      }).join('');
+      tabelaHtml = `<table class="vendas-tabela-preco" style="margin-top:10px">
+        <thead><tr><th>Preço</th><th style="text-align:center">Un.</th><th style="text-align:center">%</th><th>Receita</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>`;
+    }
+
+    return `${periodoFilter}<div class="vendas-resumo">
+      <div class="vendas-resumo-card">
+        <div class="label">Un. vendidas (${pLbl})</div>
+        <div class="valor" style="color:var(--green)">${totalUn.toLocaleString('pt-BR')}</div>
+      </div>
+      <div class="vendas-resumo-card">
+        <div class="label">Receita (${pLbl})</div>
+        <div class="valor" style="color:var(--accent)">${brl(totalRec)}</div>
+      </div>
+      <details class="vendas-resumo-card" style="list-style:none">
+        <summary style="list-style:none;display:block;cursor:pointer;user-select:none">
+          <div class="label">Ticket médio ▾</div>
+          <div class="valor">${brl(ticket)}</div>
+        </summary>
+        ${tabelaHtml}
+      </details>
+    </div>`;
+  }
+
+  function _fmtTooltipDate(iso, periodo) {
+    try {
+      const d = new Date(iso);
+      if (isNaN(d)) return '';
+      const dias   = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+      const meses  = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+      const dow = dias[d.getDay()];
+      const dia = d.getDate();
+      const mes = meses[d.getMonth()];
+      if (periodo === '7d' || periodo === '30d' || periodo === 'custom') {
+        return `${dow}, ${dia} ${mes}.`;
+      }
+      const h = String(d.getHours()).padStart(2,'0');
+      const m = String(d.getMinutes()).padStart(2,'0');
+      return `${dow}, ${dia} ${mes}. — ${h}:${m}h`;
+    } catch { return ''; }
+  }
+
+  function onVendasChartMove(event) {
+    const { buckets, periodo, modo } = _vendaChartData;
+    if (!buckets || !buckets.length) return;
+
+    const svgEl  = event.currentTarget.closest('svg');
+    const svgRect = svgEl.getBoundingClientRect();
+    const svgX   = (event.clientX - svgRect.left) / svgRect.width * 800;
+
+    const padL = 60, padR = 55;
+    const innerW = 800 - padL - padR;
+    const n = buckets.length;
+    const idx = Math.max(0, Math.min(n - 1, Math.round((svgX - padL) / innerW * (n - 1))));
+    const bucket = buckets[idx];
+    if (!bucket) return;
+
+    // Atualiza linha de cursor
+    const xPos = padL + (n > 1 ? (idx / (n - 1)) * innerW : innerW / 2);
+    const cursorLine = svgEl.getElementById ? svgEl.getElementById('vendas-cursor-line')
+                       : document.getElementById('vendas-cursor-line');
+    if (cursorLine) {
+      cursorLine.setAttribute('x1', xPos.toFixed(1));
+      cursorLine.setAttribute('x2', xPos.toFixed(1));
+      cursorLine.setAttribute('visibility', 'visible');
+    }
+
+    // Monta conteúdo do tooltip (modo sempre combined ou concorrentes)
+    let rows = '';
+    if ((bucket.unidades || 0) > 0) {
+      rows += `<div class="chart-tooltip-row">
+        <span class="chart-tooltip-dot" style="background:var(--blue)"></span>
+        <span class="chart-tooltip-label">Vendas</span>
+        <span class="chart-tooltip-valor">${bucket.unidades} un</span>
+      </div>`;
+      rows += `<div class="chart-tooltip-row">
+        <span class="chart-tooltip-dot" style="background:var(--blue);opacity:0.45"></span>
+        <span class="chart-tooltip-label">Receita</span>
+        <span class="chart-tooltip-valor">${brl(bucket.receita || 0)}</span>
+      </div>`;
+    }
+    if (bucket.preco_snapshot) {
+      rows += `<div class="chart-tooltip-row">
+        <span class="chart-tooltip-dot" style="background:rgba(250,204,21,0.9)"></span>
+        <span class="chart-tooltip-label">Preço</span>
+        <span class="chart-tooltip-valor">${brl(bucket.preco_snapshot)}</span>
+      </div>`;
+      if (bucket.preco_medio && Math.abs(bucket.preco_medio - bucket.preco_snapshot) > 0.05) {
+        rows += `<div class="chart-tooltip-row">
+          <span class="chart-tooltip-dot" style="background:transparent;border:1px dashed rgba(250,204,21,0.6)"></span>
+          <span class="chart-tooltip-label">Preço médio pedidos</span>
+          <span class="chart-tooltip-valor">${brl(bucket.preco_medio)}</span>
+        </div>`;
+      }
+    }
+
+    const tooltip = document.getElementById('vendas-hover-tooltip');
+    if (!tooltip) return;
+    tooltip.innerHTML = `<div class="chart-tooltip-date">${_fmtTooltipDate(bucket.ts, periodo)}</div>${rows}`;
+    tooltip.style.display = 'block';
+
+    // Posiciona próximo ao cursor (evita sair da tela pela direita)
+    const tw = 210;
+    const tx = (event.clientX + tw + 20 > window.innerWidth)
+      ? event.clientX - tw - 12
+      : event.clientX + 14;
+    tooltip.style.left = `${tx}px`;
+    tooltip.style.top  = `${Math.max(10, event.clientY - 50)}px`;
+  }
+
+  function onVendasChartLeave() {
+    const tooltip = document.getElementById('vendas-hover-tooltip');
+    if (tooltip) tooltip.style.display = 'none';
+    const cursor  = document.getElementById('vendas-cursor-line');
+    if (cursor)  cursor.setAttribute('visibility', 'hidden');
+  }
+
+  function renderPriceVendasChart(buckets, periodo, modo) {
+    if (!buckets || buckets.length === 0) {
+      return '<div class="empty-state" style="padding:16px">Sem dados de vendas no período</div>';
+    }
+
+    // Guarda para o hover
+    _vendaChartData = { buckets, periodo, modo };
+
+    const mostrarPreco  = modo === 'combined' || modo === 'price';
+    const mostrarVendas = modo === 'combined' || modo === 'units' || modo === 'revenue';
+    const usarReceita   = modo === 'revenue';
+
+    const W = 800, H = 260;
+    const padL = 60, padR = 55, padT = 22, padB = 42;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+    const n = buckets.length;
+    const barW = Math.max(3, (innerW / Math.max(n, 1)) * 0.6);
+
+    // Escala Y esquerda: preço (linha)
+    const precos = buckets.map(b => b.preco_snapshot).filter(v => v > 0);
+    let minP = precos.length ? Math.min(...precos) : 0;
+    let maxP = precos.length ? Math.max(...precos) : 1;
+    const spanP = maxP - minP || 1;
+    minP = Math.max(0, minP - spanP * 0.2);
+    maxP += spanP * 0.2;
+
+    // Escala Y direita: vendas (barras)
+    const valVendas = buckets.map(b => usarReceita ? (b.receita || 0) : (b.unidades || 0));
+    const maxV = Math.max(...valVendas, 0.001);
+
+    const xPos  = i => padL + (n > 1 ? (i / (n - 1)) * innerW : innerW / 2);
+    const yPosP = v => padT + innerH - ((v - minP) / (maxP - minP)) * innerH;
+    const yPosV = v => padT + innerH - (v / maxV) * innerH * 0.92;
+
+    // Gridlines
+    const nGrids = 4;
+    const grids  = [];
+    for (let i = 0; i <= nGrids; i++) {
+      const y = padT + innerH * (1 - i / nGrids);
+      grids.push(`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${(W - padR).toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-dasharray="2,3" opacity="0.5"/>`);
+    }
+
+    // Rótulos eixo Y esquerdo (preço)
+    const leftLabels = [];
+    if (mostrarPreco) {
+      for (let i = 0; i <= nGrids; i++) {
+        const val = minP + (maxP - minP) * (i / nGrids);
+        const y   = yPosP(val);
+        leftLabels.push(`<text x="${padL - 5}" y="${(y + 4).toFixed(1)}" text-anchor="end" fill="var(--muted)" font-size="10">${val.toFixed(0)}</text>`);
+      }
+    }
+
+    // Rótulos eixo Y direito (vendas)
+    const rightLabels = [];
+    if (mostrarVendas) {
+      for (let i = 0; i <= nGrids; i++) {
+        const val = maxV * (i / nGrids);
+        const y   = padT + innerH * (1 - i / nGrids);
+        const lbl = usarReceita
+          ? (val >= 1000 ? `R$${(val / 1000).toFixed(1)}k` : `R$${val.toFixed(0)}`)
+          : val.toFixed(0);
+        rightLabels.push(`<text x="${W - padR + 6}" y="${(y + 4).toFixed(1)}" fill="var(--blue)" font-size="10">${lbl}</text>`);
+      }
+    }
+
+    // Barras de VENDAS (principal visual)
+    const bars = [];
+    if (mostrarVendas) {
+      buckets.forEach((b, i) => {
+        const v = usarReceita ? (b.receita || 0) : (b.unidades || 0);
+        if (v <= 0) return;
+        const x    = xPos(i) - barW / 2;
+        const yTop = yPosV(v);
+        const yBot = padT + innerH;
+        const h    = Math.max(2, yBot - yTop);
+        bars.push(`<rect x="${x.toFixed(1)}" y="${yTop.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="var(--blue)" opacity="0.65" rx="2"/>`);
+      });
+    }
+
+    // Linha de PREÇO
+    let linhaPreco = '';
+    if (mostrarPreco && precos.length > 0) {
+      const pts = buckets
+        .map((b, i) => b.preco_snapshot > 0 ? { x: xPos(i), y: yPosP(b.preco_snapshot) } : null)
+        .filter(Boolean);
+      if (pts.length > 1) {
+        const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+        linhaPreco  = `<path d="${pathD}" fill="none" stroke="rgba(250,204,21,0.9)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+        linhaPreco += pts.map(p =>
+          `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="rgba(250,204,21,0.9)" stroke="var(--surface)" stroke-width="1.5"/>`
+        ).join('');
+      }
+    }
+
+    // Linha cursor (inicialmente oculta)
+    const cursorLine = `<line id="vendas-cursor-line" x1="0" y1="${padT}" x2="0" y2="${(padT + innerH).toFixed(1)}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3,3" opacity="0.6" visibility="hidden"/>`;
+
+    // Rótulos eixo X
+    const stride = Math.max(1, Math.floor(n / 10));
+    const xLabels = buckets.map((b, i) => {
+      if (i % stride !== 0) return '';
+      return `<text x="${xPos(i).toFixed(1)}" y="${(H - padB + 16).toFixed(1)}" text-anchor="middle" fill="var(--muted)" font-size="9">${_fmtHoraOuData(b.ts, periodo)}</text>`;
+    }).join('');
+
+    // Rótulos de eixo (rotacionados)
+    const lblLeft = mostrarPreco
+      ? `<text transform="rotate(-90)" x="${-(padT + innerH / 2)}" y="13" text-anchor="middle" fill="rgba(250,204,21,0.6)" font-size="9">Preço (R$)</text>`
+      : '';
+    const lblRight = mostrarVendas
+      ? `<text transform="rotate(90)" x="${padT + innerH / 2}" y="${-(W - 4)}" text-anchor="middle" fill="var(--blue)" font-size="9" opacity="0.7">${usarReceita ? 'Receita (R$)' : 'Unidades'}</text>`
+      : '';
+
+    // Zona de captura de mouse (topo, transparente)
+    const hitZone = `<rect x="${padL}" y="${padT}" width="${innerW}" height="${innerH}" fill="transparent" style="cursor:crosshair" onmousemove="onVendasChartMove(event)" onmouseleave="onVendasChartLeave()"/>`;
+
+    // Legenda
+    const legendItems = [];
+    if (mostrarVendas) legendItems.push(`<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px"><span style="width:14px;height:8px;background:var(--blue);opacity:0.65;border-radius:2px;display:inline-block"></span>${usarReceita ? 'Receita' : 'Un. vendidas'}</span>`);
+    if (mostrarPreco)  legendItems.push(`<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px"><span style="width:14px;height:2px;background:rgba(250,204,21,0.9);display:inline-block;border-radius:2px"></span>Preço</span>`);
+
+    return `<div class="price-chart-wrap" style="position:relative">
+      <div id="vendas-hover-tooltip" class="chart-tooltip"></div>
+      <div class="price-chart">
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+          ${grids.join('')}
+          ${leftLabels.join('')}
+          ${rightLabels.join('')}
+          ${lblLeft}${lblRight}
+          ${bars.join('')}
+          ${linhaPreco}
+          ${cursorLine}
+          ${xLabels}
+          ${hitZone}
+        </svg>
+      </div>
+      <div class="price-legend" style="gap:16px">${legendItems.join('')}</div>
+    </div>`;
+  }
+
+  // ---------- Breakdown da margem ----------
+
+  function _linhaBd(label, valor, classe = '') {
+    return `<div class="breakdown-row ${classe}">
+      <span class="label">${label}</span>
+      <span class="valor">${valor}</span>
+    </div>`;
+  }
+
+  function renderBreakdownCard(bd, titulo, isDescartado = false) {
+    if (!bd || bd.erro) {
+      return `<div class="breakdown-card">
+        <div class="breakdown-head"><span class="titulo">${titulo}</span></div>
+        <div class="empty-state" style="padding:14px;font-size:12px">
+          ${bd?.erro || 'Sem dados'}
+        </div>
+      </div>`;
+    }
+
+    const tagDescartado = isDescartado
+      ? `<span class="breakdown-descartado-tag" title="Esse seria o preço ótimo, mas o RC fica abaixo do mínimo — sistema NÃO sugere">DESCARTADO</span>`
+      : '';
+    const rcClasse = corPorRC(bd.rc_pct);
+    const fullTag = bd.is_full ? '<span class="full-badge" style="margin-left:6px">FULL</span>' : '';
+    const tipoTag = `<span class="sku-tag" style="margin-left:6px">${bd.tipo_anuncio}</span>`;
+
+    const rebateInfoClasse = bd.rebate_aplicado ? '' : (bd.rebate_pct > 0 ? 'alerta' : '');
+    const rebateInfo = bd.rebate_motivo
+      ? `<div class="breakdown-rebate-info ${rebateInfoClasse}">
+           <strong>Rebate:</strong> ${bd.rebate_motivo}
+         </div>`
+      : '';
+
+    return `<div class="breakdown-card ${isDescartado ? 'descartado' : ''}">
+      <div class="breakdown-head">
+        <span class="titulo">${titulo}${tipoTag}${fullTag}</span>
+        ${tagDescartado}
+      </div>
+      <div class="breakdown-rows">
+        <div class="breakdown-row destaque">
+          <span class="label">Preço</span>
+          <span class="valor">${brl(bd.preco)}</span>
+        </div>
+        ${_linhaBd('Custo (CMV)', '− ' + brl(bd.custo), 'negativo')}
+        ${_linhaBd('Comissão ML', '− ' + brl(bd.comissao), 'negativo')}
+        ${_linhaBd('Frete', '− ' + brl(bd.frete), 'negativo')}
+        ${_linhaBd('Imposto', '− ' + brl(bd.imposto), 'negativo')}
+        ${_linhaBd('Insumo', '− ' + brl(bd.insumo), 'negativo')}
+        ${_linhaBd('Reversa', '− ' + brl(bd.reversa), 'negativo')}
+        ${_linhaBd(
+          'Rebate ML' + (bd.rebate_aplicado ? '' : ' (não se aplica)'),
+          (bd.rebate_aplicado ? '+ ' : '') + brl(bd.rebate),
+          bd.rebate_aplicado ? 'positivo' : ''
+        )}
+        <div class="breakdown-row destaque ${rcClasse}">
+          <span class="label">Lucro bruto</span>
+          <span class="valor">${brl(bd.lucro_bruto)}</span>
+        </div>
+        <div class="breakdown-row label-only">
+          <span>Margem: <b class="${rcClasse}">${pct(bd.margem_pct)}</b></span>
+          <span>RC: <b class="${rcClasse}">${pct(bd.rc_pct)}</b></span>
+        </div>
+      </div>
+      ${rebateInfo}
+    </div>`;
+  }
+
+  function renderBxDetail(detail) {
+    const s = detail.snapshot;
+    const concorrentes = detail.concorrentes || [];
+    const historico = detail.historico_24h || [];
+    const serieConcorrentes = detail.serie_concorrentes || [];
+    const breakdownAtual = detail.breakdown_atual;
+    const breakdownOtimo = detail.breakdown_otimo;
+
+    if (!s) return '<div class="empty-state">Sem dados</div>';
+
+    const fotoModal = s.thumbnail_url
+      ? `<img class="modal-header-foto" src="${escapeHtml(s.thumbnail_url)}" alt="" onerror="this.style.display='none'">`
+      : '';
+    document.getElementById('bx-modal-title').innerHTML =
+      `<div style="display:flex;align-items:center;gap:0">
+         ${fotoModal}
+         <div>
+           <div>${s.sku} ${s.url_anuncio ? `<a href="${s.url_anuncio}" target="_blank" style="color:var(--accent);font-size:12px;font-weight:normal;margin-left:6px">ver no ML →</a>` : ''}</div>
+           <div style="color:var(--muted);font-size:12px;font-weight:normal;margin-top:2px">${escapeHtml(s.titulo || s.item_id)}</div>
+         </div>
+       </div>`;
+
+    // Mini gráfico de posição: extraído para função reutilizável (filtro de período)
+    const chart = renderPosicaoChart(historico);
+
+    const top5Rows = concorrentes.map(c => {
+      // RC nosso para vencer este seller (zero coluna se é nossa linha)
+      let rcCell = '<td style="color:var(--muted);font-size:11px">—</td>';
+      if (!c.e_nos && c.nosso_rc_no_preco != null) {
+        const rcCls = corPorRC(c.nosso_rc_no_preco);
+        rcCell = `<td class="mono ${rcCls}" title="RC se descermos para R$ ${c.nosso_preco_para_vencer?.toFixed(2)} (R$ 0,10 abaixo)">
+          ${pct(c.nosso_rc_no_preco)}
+          <div style="font-size:9px;color:var(--muted);font-weight:normal">m ${pct(c.nosso_margem_no_preco)}</div>
+        </td>`;
+      }
+      return `<tr class="${c.e_nos ? 'top5-row-nos' : ''}" data-posicao="${c.posicao}">
+        <td>${c.posicao}</td>
+        <td>
+          ${c.seller_nome || '—'}${c.e_nos ? ' <span class="full-badge" style="background:rgba(250,204,21,0.15);color:var(--accent)">NÓS</span>' : ''}
+          ${c.total_vendas > 0 ? `<div style="font-size:10px;color:var(--muted)">${formatarVendas(c.total_vendas)}</div>` : ''}
+        </td>
+        <td class="mono">${brl(c.preco)}</td>
+        <td>${c.tipo_envio || '—'}${c.frete_gratis ? ' <span style="color:var(--green);font-size:10px">grátis</span>' : ''}</td>
+        <td style="color:var(--muted)">${c.reputacao || '—'}</td>
+        ${rcCell}
+        <td class="prazo-cell" style="font-size:11px;color:var(--muted)" title="Consultando ao ML…">
+          <span class="spin" style="display:inline-block">↻</span>
+        </td>
+      </tr>`;
+    }).join('');
+
+    const sugestaoHtml = s.preco_otimo_sugerido != null
+      ? `<div class="detail-grid">
+           <div class="detail-item">
+             <div class="label">Preço ótimo</div>
+             <div class="value mono" style="color:var(--accent)">${brl(s.preco_otimo_sugerido)}</div>
+           </div>
+           <div class="detail-item">
+             <div class="label">RC esperado</div>
+             <div class="value mono">${s.rc_no_preco_otimo?.toFixed(1)}%</div>
+           </div>
+         </div>
+         <p style="color:var(--muted);font-size:12px;margin-top:-8px;margin-bottom:16px">${s.motivo_sugestao || ''}</p>`
+      : `<p style="color:var(--muted);font-style:italic;margin-bottom:16px">${s.motivo_sugestao || 'Sem sugestão'}</p>`;
+
+    return `
+      <h3>Snapshot atual</h3>
+      <div class="detail-grid">
+        <div class="detail-item">
+          <div class="label">Status</div>
+          <div class="value">${bxStatusTag(s)}</div>
+        </div>
+        <div class="detail-item">
+          <div class="label">Sua posição</div>
+          <div class="value">${posicaoChipHtml(s.nossa_posicao, s.qtd_concorrentes, s.tem_buybox)}</div>
+        </div>
+        <div class="detail-item">
+          <div class="label">Seu preço</div>
+          <div class="value mono">${brl(s.preco_atual)}</div>
+        </div>
+        <div class="detail-item">
+          <div class="label">Margem atual</div>
+          <div class="value mono ${corPorRC(s.rc_atual_pct)}">
+            ${pct(s.margem_atual_pct)}
+            <span style="font-size:11px">
+              RC ${s.rc_atual_pct?.toFixed(1)}%
+            </span>
+          </div>
+        </div>
+        <div class="detail-item">
+          <div class="label">Estoque</div>
+          <div class="value">${estoqueCell(s)}</div>
+        </div>
+        <div class="detail-item">
+          <div class="label">Tipo anúncio</div>
+          <div class="value">${s.tipo_anuncio}${s.is_full ? ' <span class="full-badge">FULL</span>' : ''}</div>
+        </div>
+        ${s.campanha_ativa_nome ? `
+        <div class="detail-item">
+          <div class="label">Campanha</div>
+          <div class="value" style="font-size:11px">${escapeHtml(s.campanha_ativa_nome)}</div>
+          ${(s.campanha_start_date || s.campanha_finish_date) ? `
+            <div style="font-size:10px;margin-top:3px;${vigenciaExpiraEmBreve(s.campanha_finish_date) ? 'color:var(--accent);font-weight:600' : 'color:var(--muted)'}">
+              Vigência: ${formatarVigencia(s.campanha_start_date, s.campanha_finish_date)}
+            </div>` : ''}
+        </div>` : ''}
+      </div>
+
+      <h3>Sugestão de preço</h3>
+      ${sugestaoHtml}
+
+      <h3>Breakdown da margem</h3>
+      <div class="breakdown">
+        ${renderBreakdownCard(breakdownAtual, 'Preço atual')}
+        ${breakdownOtimo ? renderBreakdownCard(
+          breakdownOtimo,
+          breakdownOtimo.preco_descartado ? 'Preço candidato' : 'Preço ótimo sugerido',
+          breakdownOtimo.preco_descartado,
+        ) : ''}
+      </div>
+
+      <h3>Top 5 concorrentes</h3>
+      ${concorrentes.length === 0
+        ? '<div class="empty-state" style="padding:12px">Sem concorrentes capturados</div>'
+        : `<table class="top5-table" id="top5-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Vendedor</th>
+                <th>Preço</th>
+                <th>Envio</th>
+                <th>Reputação</th>
+                <th title="RC que teríamos se descêssemos R$ 0,10 abaixo do preço dele para passar à frente">RC p/ vencer</th>
+                <th title="Prazo de entrega para o CEP de referência (centro SP)">Prazo SP</th>
+              </tr>
+            </thead>
+            <tbody>${top5Rows}</tbody>
+          </table>`}
+
+      <h3>Campanhas disponíveis para este anúncio</h3>
+      <div id="campanhas-sku-wrap" class="campanhas-mini">
+        <div class="campanha-mini-loading">
+          <span class="spin" style="display:inline-block">↻</span>
+          Carregando campanhas do ML…
+        </div>
+      </div>
+
+      <h3>Histórico de posição e preços
+        <span style="font-size:11px;color:var(--muted);font-weight:normal;margin-left:8px">
+          (filtre o período aplicado a ambos os gráficos abaixo)
+        </span>
+      </h3>
+      <div class="periodo-bar">
+        <button class="periodo-btn active" data-periodo="24h" onclick="aplicarPeriodoModal('24h', this)">24 horas</button>
+        <button class="periodo-btn" data-periodo="7d"  onclick="aplicarPeriodoModal('7d', this)">7 dias</button>
+        <button class="periodo-btn" data-periodo="30d" onclick="aplicarPeriodoModal('30d', this)">30 dias</button>
+        <button class="periodo-btn" data-periodo="custom" onclick="aplicarPeriodoModal('custom', this)">Personalizado…</button>
+        <div class="periodo-custom" id="periodo-custom-inputs">
+          <input type="date" id="periodo-desde" title="Data inicial">
+          <span style="color:var(--muted);font-size:11px">→</span>
+          <input type="date" id="periodo-ate" title="Data final">
+          <button onclick="aplicarPeriodoCustom()">Aplicar</button>
+        </div>
+      </div>
+
+      <h4 style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 6px">
+        Sua posição
+      </h4>
+      <div id="grafico-posicao-wrap">${chart}</div>
+
+      <h4 style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px">
+        Preço &amp; Vendas
+      </h4>
+      <div id="vendas-resumo-wrap"></div>
+      <div class="vendas-selector">
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap">Visualização:</span>
+        <select id="vendas-modo-select" onchange="_setVendasModo(this.value)">
+          <option value="combined">Preço + Vendas</option>
+          <option value="concorrentes">Top 5 concorrentes</option>
+        </select>
+      </div>
+      <div id="vendas-chart-wrap" class="price-chart-wrap">
+        <div class="empty-state" style="padding:14px">Carregando vendas…</div>
+      </div>
+    `;
+  }
+
+  // Consulta lazy do prazo de entrega para cada item do top 5
+  async function carregarPrazosDoTop5(sku, itemId) {
+    try {
+      const res = await fetch(API_BX_PRAZOS(sku, itemId));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const prazos = json.prazos || [];
+      const tabela = document.getElementById('top5-table');
+      if (!tabela) return;
+      // Preenche cada célula pela posição
+      for (const p of prazos) {
+        const linha = tabela.querySelector(`tr[data-posicao="${p.posicao}"]`);
+        if (!linha) continue;
+        const cell = linha.querySelector('.prazo-cell');
+        if (!cell) continue;
+        if (p.prazo_dias == null) {
+          cell.innerHTML = '<span style="color:var(--muted)">—</span>';
+          cell.title = p.erro || 'Prazo indisponível';
+        } else {
+          const dias = p.prazo_dias;
+          const rotulo = dias === 0 ? 'hoje'
+                       : dias === 1 ? 'amanhã'
+                       : `${dias} dias`;
+          const cor = dias <= 1 ? 'var(--green)'
+                   : dias <= 3 ? 'var(--accent)'
+                   : 'var(--red)';
+          cell.innerHTML = `<span style="color:${cor};font-weight:600">${rotulo}</span>`;
+          cell.title = `Entrega em ~${dias} dia(s)`;
+        }
+      }
+    } catch (err) {
+      // Falha silenciosa nas células — coloca "—" em todas
+      document.querySelectorAll('.prazo-cell').forEach(c => {
+        c.innerHTML = '<span style="color:var(--muted)">—</span>';
+        c.title = `Erro ao consultar prazo: ${err.message}`;
+      });
+    }
+  }
+
+  async function carregarCampanhasDoSku(sku, itemId) {
+    const wrap = document.getElementById('campanhas-sku-wrap');
+    if (!wrap) return;
+    try {
+      const res = await fetch(API_BX_CAMPANHAS(sku, itemId));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      wrap.innerHTML = renderCampanhasSku(json);
+    } catch (err) {
+      wrap.innerHTML = `<div class="campanha-mini-loading" style="color:var(--red)">
+        ⚠ ${err.message}
+      </div>`;
+    }
+  }
+
+  function renderCampanhasSku(json) {
+    const rows = json.campanhas || [];
+    if (rows.length === 0) {
+      return `<div class="campanha-mini-loading">Nenhuma campanha ativa ou disponível para este anúncio.</div>`;
+    }
+    const ativas = rows.filter(r => r.status === 'ATIVA');
+    const candidatas = rows.filter(r => r.status === 'CANDIDATA');
+    const erros = rows.filter(r => r.status === 'ERRO');
+
+    let html = '<table><thead><tr>' +
+      '<th>Campanha</th>' +
+      '<th>Status</th>' +
+      '<th>Preço</th>' +
+      '<th>Rebate</th>' +
+      '<th>Margem</th>' +
+      '<th>RC</th>' +
+      '<th>Vigência</th>' +
+      '<th>Decisão</th>' +
+      '</tr></thead><tbody>';
+
+    for (const r of [...ativas, ...candidatas]) {
+      const tagStatus = r.status === 'ATIVA'
+        ? `<span class="tag tag-ativa">ATIVA</span>`
+        : `<span class="tag tag-candidata">CANDIDATA</span>`;
+      const tagFull = r.is_full ? '<span class="full-badge">FULL</span>' : '';
+      const tagMelhor = r.melhor_rc
+        ? `<span class="full-badge" style="background:rgba(34,197,94,0.2);color:var(--green);margin-left:4px" title="Melhor RC entre as campanhas">★ MELHOR</span>`
+        : '';
+      const decisao = r.decisao === 'ACEITAR'
+        ? `<span class="tag tag-aceitar" title="${r.motivo || ''}">ACEITAR</span>`
+        : (r.decisao === 'RECUSAR'
+            ? `<span class="tag tag-recusar" title="${r.motivo || ''}">RECUSAR</span>`
+            : `<span style="color:var(--muted);font-size:11px">participando</span>`);
+      const rcCls = corPorRC(r.rc_pct);
+      const vigClass = vigenciaExpiraEmBreve(r.finish_date) ? 'color:var(--accent);font-weight:600' : 'color:var(--muted)';
+      html += `<tr>
+        <td>${escapeHtml(r.campanha_nome || '—')}${tagFull}${tagMelhor}</td>
+        <td>${tagStatus}</td>
+        <td class="mono">${brl(r.preco_campanha)}</td>
+        <td class="mono" style="color:var(--green)">${brl(r.rebate)}</td>
+        <td class="mono ${rcCls}">${pct(r.margem_pct)}</td>
+        <td class="mono ${rcCls}">${pct(r.rc_pct)}</td>
+        <td style="font-size:11px;${vigClass}">${formatarVigencia(r.start_date, r.finish_date)}</td>
+        <td>${decisao}</td>
+      </tr>`;
+    }
+    for (const r of erros) {
+      html += `<tr><td colspan="8" style="color:var(--red);font-size:11px">
+        ⚠ ${escapeHtml(r.erro || 'Erro ao consultar campanhas')}
+      </td></tr>`;
+    }
+    html += '</tbody></table>';
+    return html;
+  }
+
+  // Formata vigência da campanha. Aceita ISO 8601; saída "dd/MM → dd/MM".
+  // Quando uma das datas falta, mostra só a disponível.
+  function formatarVigencia(start, finish) {
+    function _fmt(iso) {
+      if (!iso) return null;
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return null;
+      return d.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
+    }
+    const s = _fmt(start), f = _fmt(finish);
+    if (!s && !f) return '—';
+    if (s && f)  return `${s} → ${f}`;
+    return s || `até ${f}`;
+  }
+
+  // Indica se uma data ISO está nas próximas N horas (para destaque "expira em breve")
+  function vigenciaExpiraEmBreve(finish, horas = 24) {
+    if (!finish) return false;
+    const d = new Date(finish);
+    if (isNaN(d.getTime())) return false;
+    const delta = (d.getTime() - Date.now()) / (1000 * 60 * 60);
+    return delta > 0 && delta <= horas;
+  }
+
+  // Formata vendas no padrão do ML: "+100 vendas", "+1 mil vendas", "+10 mil vendas", "+100 mil vendas"
+  function formatarVendas(total) {
+    if (!total || total <= 0) return '';
+    // ML usa faixas: até 100 não destaca; depois +100, +500, +1 mil, +5 mil, +10 mil, +50 mil, +100 mil
+    const faixas = [
+      [100_000, '+100 mil vendas'],
+      [50_000,  '+50 mil vendas'],
+      [10_000,  '+10 mil vendas'],
+      [5_000,   '+5 mil vendas'],
+      [1_000,   '+1 mil vendas'],
+      [500,     '+500 vendas'],
+      [100,     '+100 vendas'],
+      [50,      '+50 vendas'],
+      [10,      '+10 vendas'],
+    ];
+    for (const [limite, rotulo] of faixas) {
+      if (total >= limite) return rotulo;
+    }
+    return `${total} venda(s)`;
+  }
+
+  function escapeHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/[&<>"']/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])
+    );
+  }
+
+  // Fecha modal com ESC
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeModal();
+  });
+
+  // Auto-load na abertura
+  loadData();
+</script>
+</body>
+</html>
