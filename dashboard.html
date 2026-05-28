@@ -18,6 +18,42 @@
       --orange:   #f97316;
     }
 
+    /* ── TEMA CLARO ───────────────────────────────────────────── */
+    body.light {
+      --bg:      #f1f5f9;
+      --surface: #ffffff;
+      --border:  #cbd5e1;
+      --text:    #0f172a;
+      --muted:   #64748b;
+      --accent:  #d97706;
+      --green:   #16a34a;
+      --red:     #dc2626;
+      --blue:    #2563eb;
+      --orange:  #ea580c;
+    }
+
+    /* Botão de troca de tema */
+    #btn-theme {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-size: 14px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+      flex-shrink: 0;
+    }
+    #btn-theme:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--surface);
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
@@ -1030,6 +1066,7 @@
     </div>
   </div>
   <div class="header-right">
+    <button id="btn-theme" onclick="toggleTheme()" title="Alternar tema claro/escuro">🌙</button>
     <span id="last-updated">—</span>
     <button id="btn-refresh" onclick="loadActiveTab()">
       <span id="refresh-icon">↻</span> Atualizar
@@ -3064,6 +3101,23 @@
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeModal();
   });
+
+  // ── TEMA CLARO/ESCURO ──────────────────────────────────────────
+  function _applyTheme(light) {
+    document.body.classList.toggle('light', light);
+    const btn = document.getElementById('btn-theme');
+    if (btn) btn.textContent = light ? '🌑' : '🌙';
+  }
+
+  function toggleTheme() {
+    const isLight = document.body.classList.toggle('light');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    const btn = document.getElementById('btn-theme');
+    if (btn) btn.textContent = isLight ? '🌑' : '🌙';
+  }
+
+  // Aplica preferência salva ao carregar
+  _applyTheme(localStorage.getItem('theme') === 'light');
 
   // Auto-load na abertura
   loadData();
