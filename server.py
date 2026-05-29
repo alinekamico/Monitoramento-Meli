@@ -9,6 +9,7 @@ Depois abra dashboard.html no navegador (ou acesse http://localhost:5000).
 
 from __future__ import annotations
 
+import concurrent.futures
 import sys
 import time
 from pathlib import Path
@@ -28,6 +29,16 @@ _CONFIG_DIR = Path(__file__).parent / "config"
 app = Flask(__name__, static_folder=str(Path(__file__).parent))
 CORS(app)
 
+# ---------------------------------------------------------------------------
+# Cache em memória para campanhas (evita re-fetch a cada reload de página)
+# ---------------------------------------------------------------------------
+# Estrutura: { conta: {"rows": [...], "ts": float, "rc_minimo": float} }
+# TTL de 10 minutos — suficiente para a maioria dos ciclos de uso.
+# Invalida automaticamente ao chamar com ?force=true.
+
+_CAMPAIGN_CACHE: dict[str, dict] = {}
+_CAMPAIGN_CACHE_TTL = 10 * 60   # segundos
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -38,12 +49,25 @@ def _load_settings() -> dict:
         return yaml.safe_load(f)
 
 
+def _conta_da_request() -> str:
+    """Extrai e valida o parâmetro ?conta= do request. Default: best_hair."""
+    import yaml as _yaml
+    contas_file = _CONFIG_DIR / "contas.yaml"
+    with open(contas_file, encoding="utf-8") as f:
+        contas_cfg = _yaml.safe_load(f)
+    contas_validas = set(contas_cfg.get("contas", {}).keys())
+    padrao = contas_cfg.get("conta_padrao", "best_hair")
+    conta = request.args.get("conta", padrao)
+    return conta if conta in contas_validas else padrao
+
+
 def _process_item(
     sku: str,
     sku_data: dict,
     item: dict,
     cfg: dict,
     rc_min: float,
+    conta: str = "best_hair",
 ) -> list[dict]:
     item_id      = item.get("id", "")
     listing_id   = item.get("listing_type_id", "")
@@ -56,7 +80,7 @@ def _process_item(
     rows: list[dict] = []
 
     try:
-        campaigns = ml_client.get_campaigns_for_item(item_id)
+        campaigns = ml_client.get_campaigns_for_item(item_id, conta=conta)
 
         for campanha in campaigns["ativas"]:
             preco = campanha.get("price") or 0.0
@@ -173,27 +197,172 @@ def health():
     return jsonify({"ok": True})
 
 
+@app.route("/api/contas")
+def listar_contas():
+    """Lista as contas configuradas (para o seletor do dashboard)."""
+    return jsonify(ml_client.listar_contas())
+
+
+@app.route("/api/skus", methods=["GET", "PUT"])
+def gerenciar_skus():
+    """
+    GET → lista todos os SKUs com custo, peso e tipo_anuncio.
+    PUT → atualiza custo, peso e/ou tipo_anuncio de um ou mais SKUs em skus.yaml.
+
+    Payload PUT (JSON):
+      [{"sku": "WLK004", "custo": 145.0, "peso": 2.0, "tipo_anuncio": "Clássico"}, ...]
+
+    Apenas os campos enviados são atualizados (merge parcial por SKU).
+    """
+    skus_path = _CONFIG_DIR / "skus.yaml"
+
+    if request.method == "GET":
+        skus = pdv.load_skus()
+        return jsonify([
+            {
+                "sku":          sku,
+                "custo":        round(float(data.get("custo", 0)), 2),
+                "peso":         round(float(data.get("peso", 0)), 3),
+                "tipo_anuncio": data.get("tipo_anuncio", "Clássico"),
+            }
+            for sku, data in sorted(skus.items())
+        ])
+
+    # PUT — valida e persiste
+    items = request.get_json(silent=True, force=True)
+    if not isinstance(items, list) or not items:
+        return jsonify({"erro": "esperado array de SKUs"}), 400
+
+    erros = []
+    for it in items:
+        sku = str(it.get("sku", "")).upper()
+        if not sku:
+            erros.append("sku ausente em um item")
+            continue
+        for campo in ("custo", "peso"):
+            v = it.get(campo)
+            if v is not None:
+                try:
+                    float(v)
+                except (TypeError, ValueError):
+                    erros.append(f"{sku}.{campo} deve ser numero")
+        tipo = it.get("tipo_anuncio")
+        if tipo is not None and tipo not in ("Clássico", "Premium"):
+            erros.append(f"{sku}.tipo_anuncio invalido: '{tipo}'")
+    if erros:
+        return jsonify({"erro": "; ".join(erros)}), 400
+
+    # Lê YAML preservando estrutura e demais campos
+    with open(skus_path, encoding="utf-8") as f:
+        yaml_doc = yaml.safe_load(f) or {}
+    skus_yaml = yaml_doc.get("skus", {})
+
+    for it in items:
+        sku = str(it["sku"]).upper()
+        entrada = skus_yaml.setdefault(sku, {})
+        if "custo" in it:
+            entrada["custo"] = round(float(it["custo"]), 2)
+        if "peso" in it:
+            entrada["peso"] = round(float(it["peso"]), 3)
+        if "tipo_anuncio" in it:
+            entrada["tipo_anuncio"] = it["tipo_anuncio"]
+
+    yaml_doc["skus"] = skus_yaml
+    with open(skus_path, "w", encoding="utf-8") as f:
+        yaml.dump(yaml_doc, f, allow_unicode=True,
+                  default_flow_style=False, sort_keys=True)
+
+    # Invalida cache de campanhas (custo/tipo mudou → RC muda)
+    _CAMPAIGN_CACHE.clear()
+
+    return jsonify({"ok": True, "atualizados": len(items)})
+
+
+@app.route("/api/rc-minimo", methods=["GET", "PUT"])
+def rc_minimo():
+    """
+    GET  → devolve o RC mínimo atual (float).
+    PUT  → atualiza rc_minimo em settings.yaml e invalida o cache de campanhas.
+
+    Payload PUT (JSON): {"rc_minimo": 65.0}
+    """
+    settings_path = _CONFIG_DIR / "settings.yaml"
+
+    if request.method == "GET":
+        cfg = _load_settings()
+        return jsonify({"rc_minimo": float(cfg.get("rc_minimo", 60.0))})
+
+    # PUT — valida e persiste
+    body = request.get_json(silent=True) or {}
+    novo = body.get("rc_minimo")
+    if novo is None:
+        return jsonify({"erro": "campo rc_minimo obrigatorio"}), 400
+    try:
+        novo = float(novo)
+    except (TypeError, ValueError):
+        return jsonify({"erro": "rc_minimo deve ser um numero"}), 400
+    if not (0.0 <= novo <= 300.0):
+        return jsonify({"erro": "rc_minimo fora do intervalo valido (0–300)"}), 400
+
+    # Lê, atualiza e grava o YAML preservando o resto da configuração
+    with open(settings_path, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+    cfg["rc_minimo"] = novo
+    with open(settings_path, "w", encoding="utf-8") as f:
+        yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+    # Invalida cache de campanhas de todas as contas (RC mudou → summary muda)
+    _CAMPAIGN_CACHE.clear()
+
+    return jsonify({"rc_minimo": novo, "ok": True})
+
+
 @app.route("/api/campaigns")
 def get_campaigns():
+    conta  = _conta_da_request()
+    force  = request.args.get("force", "").lower() in ("1", "true", "yes")
     cfg    = _load_settings()
     rc_min = float(cfg["rc_minimo"])
-    skus   = pdv.load_skus()
 
-    seller_id = ml_client.get_seller_id()
+    # ---- Cache hit ----
+    entrada = _CAMPAIGN_CACHE.get(conta)
+    if (
+        not force
+        and entrada is not None
+        and (time.time() - entrada["ts"]) < _CAMPAIGN_CACHE_TTL
+    ):
+        entrada["from_cache"] = True
+        return jsonify(entrada)
 
-    all_rows: list[dict] = []
+    # ---- Fetch live ----
+    skus      = pdv.load_skus()
+    seller_id = ml_client.get_seller_id(conta)
 
-    for sku, sku_data in skus.items():
-        item_ids = ml_client.get_item_ids_by_sku(seller_id, sku)
+    def _processar_sku(sku: str, sku_data: dict) -> list[dict]:
+        """Coleta e processa um SKU inteiro (busca + detalhes + campanhas)."""
+        item_ids = ml_client.get_item_ids_by_sku(seller_id, sku, conta=conta)
         if not item_ids:
-            continue
-        items = ml_client.get_items_details(item_ids)
-        time.sleep(0.15)
-
+            return []
+        items = ml_client.get_items_details(item_ids, conta=conta)
+        rows: list[dict] = []
         for item in items:
-            rows = _process_item(sku, sku_data, item, cfg, rc_min)
-            all_rows.extend(rows)
-            time.sleep(0.1)
+            rows.extend(_process_item(sku, sku_data, item, cfg, rc_min, conta=conta))
+        return rows
+
+    # Paralelo com 3 workers — equilibrio entre velocidade e rate-limit do ML.
+    # Com 6+ workers o endpoint /seller-promotions retorna 500 em rajadas e
+    # os retries de 2 s tornam o total mais lento do que sequencial.
+    all_rows: list[dict] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        futuros = {
+            pool.submit(_processar_sku, sku, sku_data): sku
+            for sku, sku_data in skus.items()
+        }
+        for fut in concurrent.futures.as_completed(futuros):
+            try:
+                all_rows.extend(fut.result())
+            except Exception:
+                pass   # erro já capturado dentro de _process_item
 
     n_ativas     = sum(1 for r in all_rows if r.get("status") == "ATIVA")
     n_candidatas = sum(1 for r in all_rows if r.get("status") == "CANDIDATA")
@@ -201,10 +370,11 @@ def get_campaigns():
     n_recusar    = sum(1 for r in all_rows if r.get("decisao") == "RECUSAR")
     n_erros      = sum(1 for r in all_rows if r.get("status") == "ERRO")
 
-    return jsonify({
+    resposta = {
         "results":     all_rows,
         "rc_minimo":   rc_min,
         "timestamp":   time.time(),
+        "from_cache":  False,
         "summary": {
             "total":      len(all_rows),
             "ativas":     n_ativas,
@@ -213,7 +383,9 @@ def get_campaigns():
             "recusar":    n_recusar,
             "erros":      n_erros,
         },
-    })
+    }
+    _CAMPAIGN_CACHE[conta] = {**resposta, "ts": time.time()}
+    return jsonify(resposta)
 
 
 # ---------------------------------------------------------------------------
@@ -430,12 +602,11 @@ def _serializar_concorrentes(concorrentes, snap=None) -> list[dict]:
 @app.route("/api/buybox/lista")
 def buybox_lista():
     """Último snapshot de cada SKU para a tabela da aba Buybox."""
-    por_sku = buybox_persist.ultimo_snapshot_por_sku()
+    conta = _conta_da_request()
+    por_sku = buybox_persist.ultimo_snapshot_por_sku(conta)
 
-    # Múltiplos MLBs por SKU? `ultimo_snapshot_por_sku` retorna 1 por SKU
-    # (o mais recente). Para listar TODOS os MLBs do último ciclo,
-    # buscamos o último de cada par (sku, item_id).
-    with buybox_persist.sessao() as s:
+    # Múltiplos MLBs por SKU? Buscamos o último de cada par (sku, item_id).
+    with buybox_persist.sessao(conta) as s:
         from sqlalchemy import select
         from src.buybox.modelos import Snapshot as _Snap
 
@@ -491,6 +662,7 @@ def buybox_sku_detalhe(sku: str):
       - desde, ate: ISO date/datetime (sobrescrevem periodo)
     """
     from datetime import datetime as _dt
+    conta   = _conta_da_request()
     item_id = request.args.get("item_id")
     periodo = (request.args.get("periodo") or "24h").lower()
     desde_str = request.args.get("desde")
@@ -499,24 +671,22 @@ def buybox_sku_detalhe(sku: str):
     desde_dt = None
     ate_dt = None
     if desde_str or ate_str:
-        # Custom: prioridade sobre `periodo`
         try:
             if desde_str:
                 desde_dt = _dt.fromisoformat(desde_str)
             if ate_str:
                 ate_dt = _dt.fromisoformat(ate_str)
-                # Inclui o dia inteiro se vier só data (sem hora)
                 if "T" not in ate_str:
                     ate_dt = ate_dt.replace(hour=23, minute=59, second=59)
         except ValueError:
             return jsonify({"erro": "datas inválidas (use ISO 8601)"}), 400
         historico = buybox_persist.snapshots_periodo(
-            sku, item_id=item_id, desde=desde_dt, ate=ate_dt,
+            sku, item_id=item_id, desde=desde_dt, ate=ate_dt, conta=conta,
         )
     else:
         horas = {"24h": 24, "7d": 24 * 7, "30d": 24 * 30}.get(periodo, 24)
         historico = buybox_persist.snapshots_periodo(
-            sku, item_id=item_id, horas=horas,
+            sku, item_id=item_id, horas=horas, conta=conta,
         )
     if not historico:
         return jsonify({"sku": sku, "snapshots": [], "erro": "sem snapshots"}), 404
@@ -610,7 +780,8 @@ def buybox_sku_detalhe(sku: str):
 def buybox_sku_alertas(sku: str):
     """Histórico de alertas dos últimos 7 dias para um SKU."""
     import json as _json
-    alertas = buybox_persist.alertas_recentes(sku, dias=7)
+    conta   = _conta_da_request()
+    alertas = buybox_persist.alertas_recentes(sku, dias=7, conta=conta)
     return jsonify({
         "sku": sku,
         "alertas": [
@@ -636,6 +807,7 @@ def buybox_sku_prazos(sku: str):
 
     Devolve [{seller_id, item_id_concorrente, prazo_dias}, ...].
     """
+    conta   = _conta_da_request()
     item_id = request.args.get("item_id")
     if not item_id:
         return jsonify({"erro": "informe item_id"}), 400
@@ -643,8 +815,7 @@ def buybox_sku_prazos(sku: str):
     cfg = _load_settings()
     cep = (cfg.get("buybox") or {}).get("cep_referencia", "01310100")
 
-    # Busca o último snapshot para sabermos quais sellers/concorrentes consultar
-    historico = buybox_persist.snapshots_24h(sku, item_id=item_id)
+    historico = buybox_persist.snapshots_24h(sku, item_id=item_id, conta=conta)
     if not historico:
         return jsonify({"erro": "sem snapshot recente"}), 404
 
@@ -666,7 +837,7 @@ def buybox_sku_prazos(sku: str):
             })
             continue
 
-        prazo = ml_client.get_prazo_entrega_dias(item_concorrente, cep)
+        prazo = ml_client.get_prazo_entrega_dias(item_concorrente, cep, conta=conta)
         resultados.append({
             "seller_id": c.seller_id, "posicao": c.posicao,
             "item_id":   item_concorrente,
@@ -691,6 +862,7 @@ def buybox_sku_vendas(sku: str):
     """
     from datetime import datetime as _dt, timezone, timedelta as _td
 
+    conta   = _conta_da_request()
     item_id = request.args.get("item_id")
     if not item_id:
         return jsonify({"erro": "informe item_id"}), 400
@@ -701,7 +873,8 @@ def buybox_sku_vendas(sku: str):
     ate_dt   = _dt.now(timezone.utc)
     desde_dt = ate_dt - _td(hours=horas)
 
-    historico = buybox_persist.snapshots_periodo(sku, item_id=item_id, horas=horas)
+    historico = buybox_persist.snapshots_periodo(sku, item_id=item_id, horas=horas,
+                                                  conta=conta)
     if not historico:
         return jsonify({
             "sku": sku, "item_id": item_id, "periodo": periodo,
@@ -713,6 +886,7 @@ def buybox_sku_vendas(sku: str):
         item_id,
         desde_dt.strftime("%Y-%m-%dT%H:%M:%S.000-03:00"),
         ate_dt.strftime("%Y-%m-%dT%H:%M:%S.000-03:00"),
+        conta=conta,
     )
 
     def _ts(iso: str) -> _dt:
@@ -795,6 +969,7 @@ def buybox_sku_campanhas(sku: str):
     Faz consulta LIVE no ML (não usa cache do banco) — assim o usuário vê
     o estado real das campanhas no momento que abriu o detalhe.
     """
+    conta   = _conta_da_request()
     item_id = request.args.get("item_id")
     if not item_id:
         return jsonify({"erro": "informe item_id"}), 400
@@ -807,13 +982,13 @@ def buybox_sku_campanhas(sku: str):
         return jsonify({"erro": f"SKU {sku} não está em skus.yaml"}), 404
 
     try:
-        details = ml_client.get_items_details([item_id])
+        details = ml_client.get_items_details([item_id], conta=conta)
     except Exception as exc:
         return jsonify({"erro": f"falha ao buscar item: {exc}"}), 500
     if not details:
         return jsonify({"erro": "item não encontrado no ML"}), 404
 
-    rows = _process_item(sku, sku_data, details[0], cfg, rc_min)
+    rows = _process_item(sku, sku_data, details[0], cfg, rc_min, conta=conta)
     return jsonify({
         "sku":       sku,
         "item_id":   item_id,
@@ -828,9 +1003,10 @@ def buybox_skus_configurados():
     Lista os SKUs rastreáveis (lidos de config/skus.yaml) + se já têm
     snapshots. Alimenta o dropdown de seleção para coleta manual.
     """
+    conta = _conta_da_request()
     skus = pdv.load_skus()  # {SKU: {custo, peso, tipo_anuncio}}
     # SKUs que já foram coletados pelo menos 1 vez
-    with buybox_persist.sessao() as s:
+    with buybox_persist.sessao(conta) as s:
         from sqlalchemy import select
         from src.buybox.modelos import Snapshot as _Snap
         coletados = set(
@@ -859,10 +1035,59 @@ def buybox_forcar_coleta():
     """
     from src.buybox import coletor as _coletor
 
-    body = request.get_json(silent=True) or {}
-    skus = body.get("skus") or None
-    stats = _coletor.coletar(skus_filtro=skus)
+    conta = _conta_da_request()
+    body  = request.get_json(silent=True) or {}
+    skus  = body.get("skus") or None
+    stats = _coletor.coletar(skus_filtro=skus, conta=conta)
     return jsonify(stats)
+
+
+# ---------------------------------------------------------------------------
+# OAuth callback — captura o code do fluxo de autorização ML
+# ---------------------------------------------------------------------------
+
+@app.route("/oauth/callback")
+def oauth_callback():
+    """
+    Redirect URI usada no cadastro do App ML.
+    Captura o ?code= e exibe na tela para o script gerar_tokens.py.
+
+    Cadastre no painel de Dev ML:
+      http://localhost:5000/oauth/callback
+    """
+    code  = request.args.get("code", "")
+    erro  = request.args.get("error", "")
+    descr = request.args.get("error_description", "")
+
+    if erro:
+        return f"""
+        <html><body style="font-family:sans-serif;padding:40px;background:#1a1d27;color:#e2e8f0">
+          <h2 style="color:#ef4444">❌ Erro na autorização</h2>
+          <p><b>{erro}</b>: {descr}</p>
+          <p>Tente novamente.</p>
+        </body></html>
+        """, 400
+
+    if not code:
+        return f"""
+        <html><body style="font-family:sans-serif;padding:40px;background:#1a1d27;color:#e2e8f0">
+          <h2 style="color:#f97316">⚠️ Nenhum código recebido</h2>
+          <p>Parâmetro <code>code</code> não encontrado na URL.</p>
+        </body></html>
+        """, 400
+
+    return f"""
+    <html><body style="font-family:sans-serif;padding:40px;background:#1a1d27;color:#e2e8f0">
+      <h2 style="color:#22c55e">✅ Autorização concluída!</h2>
+      <p>Copie o código abaixo e cole no terminal onde o script está esperando:</p>
+      <pre style="background:#0f1117;padding:20px;border-radius:8px;
+                  font-size:16px;color:#facc15;word-break:break-all;
+                  border:1px solid #2a2d3a">{code}</pre>
+      <p style="color:#64748b;font-size:13px">
+        Você pode fechar esta aba depois de copiar.
+      </p>
+    </body></html>
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -878,11 +1103,13 @@ def debug_raw_campanhas(item_id: str):
 
     Ex.: GET /api/debug/raw-campanhas/MLB1234567890
     """
+    conta = _conta_da_request()
     _BASE = "https://api.mercadolibre.com"
     try:
         raw = ml_client._request(
             "GET",
             f"{_BASE}/seller-promotions/items/{item_id}",
+            conta=conta,
             params={"app_version": "v2"},
         )
         # Extrai as chaves de cada item da lista para facilitar a leitura

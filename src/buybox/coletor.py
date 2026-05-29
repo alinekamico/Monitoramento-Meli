@@ -60,7 +60,7 @@ def _print(msg: str) -> None:
     sys.stdout.flush()
 
 
-def _campanha_ativa(item_id: str) -> Optional[dict]:
+def _campanha_ativa(item_id: str, conta: str = "best_hair") -> Optional[dict]:
     """
     Devolve a campanha started que está aplicando desconto agora.
 
@@ -70,7 +70,7 @@ def _campanha_ativa(item_id: str) -> Optional[dict]:
     started, escolhe a que aplica maior desconto absoluto.
     """
     try:
-        camps = ml_client.get_campaigns_for_item(item_id)
+        camps = ml_client.get_campaigns_for_item(item_id, conta=conta)
     except Exception:
         return None
 
@@ -147,6 +147,7 @@ def _processar_item(
     item_detail: dict,
     seller_id_proprio: str,
     settings: dict,
+    conta: str = "best_hair",
 ) -> Optional[SnapshotDom]:
     """Monta o SnapshotDom completo para um anúncio."""
     item_id = item_detail.get("id", "")
@@ -160,7 +161,7 @@ def _processar_item(
     cfg_buybox = settings.get("buybox", {}) or {}
     fonte_preco = cfg_buybox.get("fonte_preco", "suggested_price")
 
-    campanha = _campanha_ativa(item_id)
+    campanha = _campanha_ativa(item_id, conta=conta)
 
     # Monta top 5 ANTES de definir preço — é fonte da verdade do
     # preço visível ao cliente.
@@ -255,15 +256,16 @@ def _processar_item(
     )
 
 
-def coletar(skus_filtro: Optional[Iterable[str]] = None) -> dict:
+def coletar(skus_filtro: Optional[Iterable[str]] = None,
+            conta: str = "best_hair") -> dict:
     """
-    Executa um ciclo de coleta. Devolve estatísticas resumidas.
+    Executa um ciclo de coleta para a conta informada.
 
     Tratamento de erro por item: falha em 1 anúncio é logada mas não
     interrompe a fila.
     """
     settings = _carregar_settings()
-    persistencia.init_db()
+    persistencia.init_db(conta)
     ml_client.limpar_cache_sellers()
 
     todos = pdv.load_skus()
@@ -276,7 +278,7 @@ def coletar(skus_filtro: Optional[Iterable[str]] = None) -> dict:
     else:
         skus = todos
 
-    seller_id = ml_client.get_seller_id()
+    seller_id = ml_client.get_seller_id(conta)
 
     inicio = time.time()
     _print(f"Coleta buybox iniciada — {len(skus)} SKU(s)")
@@ -291,7 +293,7 @@ def coletar(skus_filtro: Optional[Iterable[str]] = None) -> dict:
 
     for sku, sku_data in skus.items():
         try:
-            item_ids = ml_client.get_item_ids_by_sku(seller_id, sku)
+            item_ids = ml_client.get_item_ids_by_sku(seller_id, sku, conta=conta)
         except Exception as exc:
             stats["erros"] += 1
             _log_jsonl({"evento": "erro_resolucao_mlbs",
@@ -304,16 +306,16 @@ def coletar(skus_filtro: Optional[Iterable[str]] = None) -> dict:
             _print(f"  – {sku}: sem MLBs")
             continue
 
-        items = ml_client.get_items_details(item_ids)
+        items = ml_client.get_items_details(item_ids, conta=conta)
         time.sleep(0.15)
 
         for item in items:
             item_id = item.get("id", "")
             try:
-                dom = _processar_item(sku, sku_data, item, seller_id, settings)
+                dom = _processar_item(sku, sku_data, item, seller_id, settings, conta=conta)
                 if dom is None:
                     continue
-                snap_id = persistencia.salvar_snapshot(dom)
+                snap_id = persistencia.salvar_snapshot(dom, conta=conta)
                 if snap_id is None:
                     stats["snapshots_ignorados"] += 1
                     _print(f"  ○ {sku} [{item_id}]: snapshot duplicado, ignorado")
@@ -387,8 +389,12 @@ def main() -> None:
         "--com-alertas", action="store_true",
         help="Após a coleta, avalia regras A1/A2/A3 e dispara alertas críticos.",
     )
+    parser.add_argument(
+        "--conta", default="best_hair", metavar="CONTA",
+        help="Conta ML a coletar (ex: best_hair, hair_pro). Default: best_hair.",
+    )
     args = parser.parse_args()
-    coletar(skus_filtro=args.sku)
+    coletar(skus_filtro=args.sku, conta=args.conta)
 
     if args.com_alertas:
         # Importação preguiçosa para evitar dependência circular se o

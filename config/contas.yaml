@@ -1,0 +1,27 @@
+# ============================================================
+# Contas Mercado Livre rastreadas pelo sistema
+# ============================================================
+# Cada conta tem:
+#   nome      : exibido no dashboard e nos logs
+#   db_path   : banco SQLite exclusivo (relativo à raiz do projeto)
+#   env_sufixo: sufixo das variáveis de ambiente no .env
+#               ex: "BESTHAIR" → ML_ACCESS_TOKEN_BESTHAIR
+#
+# Para adicionar uma 3ª conta:
+#   1. Copie um bloco abaixo e ajuste os campos
+#   2. Adicione as vars ML_*_NOVACONTA no .env
+#   3. Rode: python scripts/gerar_tokens.py --conta nova_conta
+# ============================================================
+
+conta_padrao: "best_hair"
+
+contas:
+  best_hair:
+    nome: "The Best Hair"
+    db_path: "data/best_hair.db"
+    env_sufixo: "BESTHAIR"
+
+  hair_pro:
+    nome: "Hair Pro"
+    db_path: "data/hair_pro.db"
+    env_sufixo: "HAIRPRO"

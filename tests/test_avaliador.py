@@ -42,12 +42,12 @@ def _isolar_banco_em_memoria(monkeypatch, tmp_path):
     persistencia.reset_engine_cache()
 
     db_file = tmp_path / "test.db"
-    eng = persistencia.get_engine(str(db_file))
+    eng = persistencia.get_engine("best_hair", str(db_file))
     Base.metadata.create_all(eng)
 
     factory = sessionmaker(bind=eng, expire_on_commit=False)
-    monkeypatch.setattr(persistencia, "_engine_cache", eng)
-    monkeypatch.setattr(persistencia, "_session_factory", factory)
+    monkeypatch.setattr(persistencia, "_engine_cache",    {"best_hair": eng})
+    monkeypatch.setattr(persistencia, "_session_factory", {"best_hair": factory})
 
     yield
 

@@ -22,19 +22,18 @@ def _isolar_banco_em_memoria(monkeypatch, tmp_path):
     """
     Cada teste roda contra um SQLite em arquivo temporário próprio.
 
-    Não usamos :memory: porque o módulo de persistência mantém engine
-    cacheada — apontar para um arquivo isolado e resetar é mais simples
-    do que substituir a engine.
+    O cache de persistência agora é um dict keyed por conta.
+    Apontamos "best_hair" para um arquivo isolado e resetamos ao final.
     """
     persistencia.reset_engine_cache()
 
     db_file = tmp_path / "test.db"
-    eng = persistencia.get_engine(str(db_file))
+    eng = persistencia.get_engine("best_hair", str(db_file))
     Base.metadata.create_all(eng)
 
     factory = sessionmaker(bind=eng, expire_on_commit=False)
-    monkeypatch.setattr(persistencia, "_engine_cache", eng)
-    monkeypatch.setattr(persistencia, "_session_factory", factory)
+    monkeypatch.setattr(persistencia, "_engine_cache",   {"best_hair": eng})
+    monkeypatch.setattr(persistencia, "_session_factory", {"best_hair": factory})
 
     yield
 

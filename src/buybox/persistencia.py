@@ -38,12 +38,13 @@ from .modelos import (
     SnapshotDom,
 )
 
-_CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
+_CONFIG_DIR   = Path(__file__).parent.parent.parent / "config"
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 
-# Cache module-level (mesmo padrão do _frete_cache em margem.py)
-_engine_cache: Engine | None = None
-_session_factory: sessionmaker[Session] | None = None
+# Cache module-level keyed por conta (ex: "best_hair", "hair_pro")
+# Mantemos a forma de dict para suportar múltiplas contas sem reinicializar.
+_engine_cache: dict[str, Engine] = {}
+_session_factory: dict[str, sessionmaker[Session]] = {}
 
 
 # ============================================================
@@ -59,6 +60,14 @@ def _load_buybox_settings() -> dict:
     return cfg.get("buybox", {})
 
 
+def _load_conta_cfg(conta: str) -> dict:
+    """Retorna a configuração da conta em config/contas.yaml."""
+    path = _CONFIG_DIR / "contas.yaml"
+    with open(path, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    return cfg.get("contas", {}).get(conta, {})
+
+
 def _resolver_db_path(db_path: str) -> Path:
     """Caminhos relativos sempre resolvem a partir da raiz do projeto."""
     p = Path(db_path)
@@ -67,49 +76,64 @@ def _resolver_db_path(db_path: str) -> Path:
     return p
 
 
-def get_engine(db_path: Optional[str] = None) -> Engine:
+def get_engine(conta: str = "best_hair", db_path: Optional[str] = None) -> Engine:
     """
-    Retorna a engine global (cacheada). Aceita db_path opcional para testes.
+    Retorna engine para a conta (cacheada por conta). Aceita db_path para testes.
 
-    Em testes, passar ":memory:" cria um banco SQLite em memória novo a
-    cada chamada — útil para isolar fixtures sem tocar em arquivo.
+    Em testes, passar db_path diferente de None ignora o conta e cria
+    engine ad-hoc — útil para isolar fixtures sem tocar em arquivo.
     """
     global _engine_cache, _session_factory
 
     if db_path is not None:
-        # Modo "ad hoc" (testes): nunca cacheia, sempre cria uma nova engine
+        # Modo ad-hoc (testes): nunca cacheia
         url = f"sqlite:///{db_path}" if db_path != ":memory:" else "sqlite:///:memory:"
         return create_engine(url, future=True)
 
-    if _engine_cache is None:
-        cfg = _load_buybox_settings()
-        path = _resolver_db_path(cfg.get("db_path", "data/buybox.db"))
+    if conta not in _engine_cache:
+        conta_cfg = _load_conta_cfg(conta)
+        db_path_str = conta_cfg.get("db_path") or f"data/{conta}.db"
+        path = _resolver_db_path(db_path_str)
         path.parent.mkdir(parents=True, exist_ok=True)
-        _engine_cache = create_engine(f"sqlite:///{path}", future=True)
-        _session_factory = sessionmaker(bind=_engine_cache, expire_on_commit=False)
-    return _engine_cache
+        engine = create_engine(f"sqlite:///{path}", future=True)
+        _engine_cache[conta] = engine
+        _session_factory[conta] = sessionmaker(bind=engine, expire_on_commit=False)
+        # Auto-init: cria tabelas e aplica migrações para bancos novos/existentes.
+        # Idempotente — não apaga dados, apenas adiciona estrutura que faltar.
+        Base.metadata.create_all(engine)
+        _migrar_schema(engine)
+
+    return _engine_cache[conta]
 
 
-def _factory() -> sessionmaker[Session]:
-    """Garante que a factory existe (chama get_engine se necessário)."""
-    if _session_factory is None:
-        get_engine()
-    assert _session_factory is not None
-    return _session_factory
+def _factory(conta: str = "best_hair") -> sessionmaker[Session]:
+    """Retorna a session factory para a conta."""
+    if conta not in _session_factory:
+        get_engine(conta)
+    return _session_factory[conta]
 
 
-def reset_engine_cache() -> None:
-    """Limpa o cache da engine. Usado em testes para forçar reinit."""
+def reset_engine_cache(conta: Optional[str] = None) -> None:
+    """
+    Limpa o cache de engine(s). Sem argumento, limpa todas as contas.
+    Usado em testes para forçar reinit.
+    """
     global _engine_cache, _session_factory
-    if _engine_cache is not None:
-        _engine_cache.dispose()
-    _engine_cache = None
-    _session_factory = None
+    if conta is not None:
+        eng = _engine_cache.pop(conta, None)
+        if eng is not None:
+            eng.dispose()
+        _session_factory.pop(conta, None)
+    else:
+        for eng in _engine_cache.values():
+            eng.dispose()
+        _engine_cache.clear()
+        _session_factory.clear()
 
 
-def init_db(engine: Optional[Engine] = None) -> Engine:
+def init_db(conta: str = "best_hair", engine: Optional[Engine] = None) -> Engine:
     """Cria as tabelas se não existirem + roda migrações. Idempotente."""
-    eng = engine if engine is not None else get_engine()
+    eng = engine if engine is not None else get_engine(conta)
     Base.metadata.create_all(eng)
     _migrar_schema(eng)
     return eng
@@ -157,9 +181,9 @@ def _migrar_schema(eng: Engine) -> None:
 
 
 @contextmanager
-def sessao() -> Iterator[Session]:
+def sessao(conta: str = "best_hair") -> Iterator[Session]:
     """Contexto de sessão com commit/rollback automático."""
-    factory = _factory()
+    factory = _factory(conta)
     session = factory()
     try:
         yield session
@@ -236,41 +260,41 @@ def _dom_para_orm(dom: SnapshotDom) -> Snapshot:
     return snap
 
 
-def salvar_snapshot(dom: SnapshotDom) -> Optional[int]:
+def salvar_snapshot(dom: SnapshotDom, conta: str = "best_hair") -> Optional[int]:
     """
     Persiste um snapshot e seus concorrentes em uma transação.
 
     Retorna o id criado, ou None se a inserção foi ignorada por já existir
-    registro com mesmo (sku, item_id, coletado_em) — a constraint de
-    idempotência impede duplicatas dentro do mesmo segundo.
+    registro com mesmo (sku, item_id, coletado_em).
     """
     snap_orm = _dom_para_orm(dom)
     try:
-        with sessao() as s:
+        with sessao(conta) as s:
             s.add(snap_orm)
-            s.flush()  # garante id antes do commit
+            s.flush()
             return snap_orm.id
     except IntegrityError:
         return None
 
 
-def ultimo_snapshot(sku: str, item_id: Optional[str] = None) -> Optional[Snapshot]:
+def ultimo_snapshot(sku: str, item_id: Optional[str] = None,
+                    conta: str = "best_hair") -> Optional[Snapshot]:
     """Último snapshot do SKU (ou do par sku+item_id se fornecido)."""
-    with sessao() as s:
+    with sessao(conta) as s:
         stmt = select(Snapshot).where(Snapshot.sku == sku)
         if item_id is not None:
             stmt = stmt.where(Snapshot.item_id == item_id)
         stmt = stmt.order_by(Snapshot.coletado_em.desc()).limit(1)
         result = s.execute(stmt).scalar_one_or_none()
         if result is not None:
-            # Materializa relação antes de fechar a sessão
             _ = result.concorrentes
         return result
 
 
-def snapshots_24h(sku: str, item_id: Optional[str] = None) -> list[Snapshot]:
-    """Atalho retrocompatível para `snapshots_periodo(sku, dias=1)`."""
-    return snapshots_periodo(sku, item_id=item_id, horas=24)
+def snapshots_24h(sku: str, item_id: Optional[str] = None,
+                  conta: str = "best_hair") -> list[Snapshot]:
+    """Atalho retrocompatível para `snapshots_periodo(sku, horas=24)`."""
+    return snapshots_periodo(sku, item_id=item_id, horas=24, conta=conta)
 
 
 def snapshots_periodo(
@@ -280,29 +304,19 @@ def snapshots_periodo(
     horas: Optional[int] = None,
     desde: Optional[datetime] = None,
     ate: Optional[datetime] = None,
+    conta: str = "best_hair",
 ) -> list[Snapshot]:
-    """
-    Snapshots em um intervalo arbitrário (mais antigos primeiro).
-
-    Modos de uso:
-      - `horas=24` → últimas 24h (atalho legado)
-      - `horas=24*30` → últimos 30 dias
-      - `desde=datetime, ate=datetime` → intervalo customizado
-
-    Quando ambos os modos forem informados, o intervalo customizado tem
-    prioridade.
-    """
+    """Snapshots em um intervalo arbitrário (mais antigos primeiro)."""
     if desde is None and ate is None:
         horas_val = horas if horas is not None else 24
         desde = datetime.now(timezone.utc) - timedelta(hours=horas_val)
         ate = datetime.now(timezone.utc)
     elif desde is None:
-        # ate informado mas desde não — assume 24h antes do `ate`
         desde = ate - timedelta(hours=24)
     elif ate is None:
         ate = datetime.now(timezone.utc)
 
-    with sessao() as s:
+    with sessao(conta) as s:
         stmt = (
             select(Snapshot)
             .where(
@@ -323,12 +337,13 @@ def snapshots_periodo(
 def snapshots_do_dia(
     sku: Optional[str] = None,
     referencia: Optional[datetime] = None,
+    conta: str = "best_hair",
 ) -> list[Snapshot]:
     """Todos os snapshots do dia (UTC) — opcionalmente filtrados por SKU."""
     base = referencia or datetime.now(timezone.utc)
     inicio = base.replace(hour=0, minute=0, second=0, microsecond=0)
     fim = inicio + timedelta(days=1)
-    with sessao() as s:
+    with sessao(conta) as s:
         stmt = (
             select(Snapshot)
             .where(Snapshot.coletado_em >= inicio, Snapshot.coletado_em < fim)
@@ -342,11 +357,9 @@ def snapshots_do_dia(
         return rows
 
 
-def ultimo_snapshot_por_sku() -> dict[str, Snapshot]:
+def ultimo_snapshot_por_sku(conta: str = "best_hair") -> dict[str, Snapshot]:
     """Mapa sku → último snapshot (útil para o endpoint da lista no dashboard)."""
-    with sessao() as s:
-        # Estratégia simples para SQLite: pega todos os SKUs distintos e
-        # busca o último de cada. Volume baixo (≤ 50 SKUs), simplicidade ganha.
+    with sessao(conta) as s:
         skus = list(s.execute(select(Snapshot.sku).distinct()).scalars())
         resultado: dict[str, Snapshot] = {}
         for sku in skus:
@@ -375,13 +388,9 @@ def registrar_alerta(
     dados: dict,
     enviado: bool,
     disparado_em: Optional[datetime] = None,
+    conta: str = "best_hair",
 ) -> int:
-    """
-    Cria registro na tabela alertas.
-
-    enviado=False → suprimido por cooldown ou pelo modo dry-run.
-                    Mantemos o registro mesmo assim para auditoria.
-    """
+    """Cria registro na tabela alertas (auditoria completa, incluindo suprimidos)."""
     ts = disparado_em or datetime.now(timezone.utc)
     alerta = Alerta(
         sku=sku,
@@ -391,15 +400,16 @@ def registrar_alerta(
         enviado_em=ts if enviado else None,
         dados=json.dumps(dados, ensure_ascii=False, default=str),
     )
-    with sessao() as s:
+    with sessao(conta) as s:
         s.add(alerta)
         s.flush()
         return alerta.id
 
 
-def ultimo_alerta_enviado(sku: str, tipo: str) -> Optional[Alerta]:
-    """Último alerta efetivamente enviado (enviado_em != null) do par sku/tipo."""
-    with sessao() as s:
+def ultimo_alerta_enviado(sku: str, tipo: str,
+                           conta: str = "best_hair") -> Optional[Alerta]:
+    """Último alerta efetivamente enviado do par sku/tipo."""
+    with sessao(conta) as s:
         stmt = (
             select(Alerta)
             .where(
@@ -413,10 +423,11 @@ def ultimo_alerta_enviado(sku: str, tipo: str) -> Optional[Alerta]:
         return s.execute(stmt).scalar_one_or_none()
 
 
-def alertas_recentes(sku: str, dias: int = 7) -> list[Alerta]:
+def alertas_recentes(sku: str, dias: int = 7,
+                     conta: str = "best_hair") -> list[Alerta]:
     """Alertas do SKU nos últimos N dias (mais recentes primeiro)."""
     desde = datetime.now(timezone.utc) - timedelta(days=dias)
-    with sessao() as s:
+    with sessao(conta) as s:
         stmt = (
             select(Alerta)
             .where(Alerta.sku == sku, Alerta.disparado_em >= desde)

@@ -60,11 +60,12 @@ def _carregar_settings() -> dict:
 # ============================================================
 
 
-def _em_cooldown(sku: str, tipo: str, cooldown_horas: int) -> bool:
+def _em_cooldown(sku: str, tipo: str, cooldown_horas: int,
+                 conta: str = "best_hair") -> bool:
     """Há alerta do mesmo (sku, tipo) enviado nas últimas `cooldown_horas`?"""
     if cooldown_horas <= 0:
         return False
-    ultimo = persistencia.ultimo_alerta_enviado(sku, tipo)
+    ultimo = persistencia.ultimo_alerta_enviado(sku, tipo, conta=conta)
     if ultimo is None or ultimo.enviado_em is None:
         return False
     # Datetime do SQLite vem naive — comparamos sem tz
@@ -78,12 +79,13 @@ def _em_cooldown(sku: str, tipo: str, cooldown_horas: int) -> bool:
 # ============================================================
 
 
-def _trio_snapshots(sku: str, item_id: str) -> tuple[Optional[Snapshot], Optional[Snapshot], Optional[Snapshot]]:
+def _trio_snapshots(sku: str, item_id: str,
+                    conta: str = "best_hair") -> tuple[Optional[Snapshot], Optional[Snapshot], Optional[Snapshot]]:
     """
     Devolve (novo, anterior, ante_anterior) — os 3 últimos snapshots do
     par (sku, item_id), do mais novo para o mais antigo.
     """
-    with persistencia.sessao() as s:
+    with persistencia.sessao(conta) as s:
         stmt = (
             select(Snapshot)
             .where(Snapshot.sku == sku, Snapshot.item_id == item_id)
@@ -99,9 +101,9 @@ def _trio_snapshots(sku: str, item_id: str) -> tuple[Optional[Snapshot], Optiona
     return novo, anterior, ante_anterior
 
 
-def _pares_para_avaliar() -> list[tuple[str, str]]:
+def _pares_para_avaliar(conta: str = "best_hair") -> list[tuple[str, str]]:
     """Todos os pares (sku, item_id) que têm pelo menos 1 snapshot."""
-    with persistencia.sessao() as s:
+    with persistencia.sessao(conta) as s:
         stmt = select(Snapshot.sku, Snapshot.item_id).distinct()
         return [(sku, item_id) for sku, item_id in s.execute(stmt).all()]
 
@@ -115,6 +117,7 @@ def _disparar(
     pendente: regras.AlertaPendente,
     cfg_email: dict,
     dry_run: bool,
+    conta: str = "best_hair",
 ) -> dict:
     """
     Envia o alerta (se possível) e registra na tabela `alertas`.
@@ -150,7 +153,7 @@ def _disparar(
 
     persistencia.registrar_alerta(
         sku=pendente.sku, item_id=pendente.item_id, tipo=pendente.tipo,
-        dados=dados_persist, enviado=enviado,
+        dados=dados_persist, enviado=enviado, conta=conta,
     )
     return {"enviado": enviado, "motivo_supressao": motivo_sup}
 
@@ -163,6 +166,7 @@ def _disparar(
 def avaliar_criticos_pendentes(
     cfg: Optional[dict] = None,
     dry_run: Optional[bool] = None,
+    conta: str = "best_hair",
 ) -> dict:
     """
     Roda regras A1/A2/A3 sobre todos os SKUs com snapshots.
@@ -190,8 +194,8 @@ def avaliar_criticos_pendentes(
         "por_tipo":             {"A1": 0, "A2": 0, "A3": 0},
     }
 
-    for sku, item_id in _pares_para_avaliar():
-        novo, anterior, ante_anterior = _trio_snapshots(sku, item_id)
+    for sku, item_id in _pares_para_avaliar(conta=conta):
+        novo, anterior, ante_anterior = _trio_snapshots(sku, item_id, conta=conta)
         pendentes = regras.avaliar_criticos(
             novo=novo, anterior=anterior, ante_anterior=ante_anterior,
             cfg_buybox=cfg_buybox,
@@ -202,20 +206,20 @@ def avaliar_criticos_pendentes(
 
             chave = _COOLDOWNS_HORAS.get(p.tipo, "")
             cooldown_h = int(cfg_buybox.get(chave, 0))
-            if _em_cooldown(p.sku, p.tipo, cooldown_h):
+            if _em_cooldown(p.sku, p.tipo, cooldown_h, conta=conta):
                 stats["suprimidos_cooldown"] += 1
                 # Mesmo suprimido, registramos para auditoria
                 persistencia.registrar_alerta(
                     sku=p.sku, item_id=p.item_id, tipo=p.tipo,
                     dados={**p.dados, "motivo": p.motivo,
                            "motivo_supressao": "cooldown"},
-                    enviado=False,
+                    enviado=False, conta=conta,
                 )
                 _log.info("alerta %s suprimido por cooldown sku=%s",
                           p.tipo, p.sku)
                 continue
 
-            r = _disparar(p, cfg_email, dry_run)
+            r = _disparar(p, cfg_email, dry_run, conta=conta)
             if r["enviado"]:
                 stats["enviados"] += 1
                 _log.info("alerta %s enviado sku=%s", p.tipo, p.sku)
@@ -241,6 +245,7 @@ def enviar_resumo_diario(
     cfg: Optional[dict] = None,
     dry_run: Optional[bool] = None,
     data_referencia: Optional[datetime] = None,
+    conta: str = "best_hair",
 ) -> dict:
     """
     Gera resumo do dia e envia e-mail único.
@@ -255,7 +260,7 @@ def enviar_resumo_diario(
     cfg_email = (cfg_buybox.get("email") or {}).copy()
 
     base = data_referencia or datetime.now(timezone.utc)
-    snaps = persistencia.snapshots_do_dia(referencia=base)
+    snaps = persistencia.snapshots_do_dia(referencia=base, conta=conta)
     resumo = regras.avaliar_resumo_diario(snaps, cfg_buybox)
 
     # Registra cada item das listas como linha em `alertas`
@@ -267,7 +272,7 @@ def enviar_resumo_diario(
         for item in lista:
             persistencia.registrar_alerta(
                 sku=item["sku"], item_id=item.get("item_id", ""),
-                tipo=tipo, dados=item, enviado=False,
+                tipo=tipo, dados=item, enviado=False, conta=conta,
             )
 
     total = (

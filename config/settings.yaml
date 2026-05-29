@@ -1,103 +1,39 @@
-# ============================================================
-# Configurações gerais da automação
-# ============================================================
-
-# Modo seguro: analisa e loga, mas NÃO aceita campanhas.
-# Mude para false somente quando validado e autorizado.
 dry_run: true
-
-# ============================================================
-# Critério de decisão
-# ============================================================
-# RC = Lucro Bruto / CMV × 100. Campanha só é aceita se RC >= este valor.
-# Limite elevado para 60 a partir do MVP Buybox (decisão do usuário).
 rc_minimo: 60.0
-
-# ============================================================
-# PDV — custos variáveis por venda
-# ============================================================
-comissao_classico: 0.14   # 14% sobre preço de campanha
-comissao_premium:  0.19   # 19% sobre preço de campanha
-imposto_pct:       0.05   # 5% sobre preço de campanha
-reversa_pct:       0.005  # 0,5% sobre preço de campanha
-insumo_fixo:       2.00   # R$ fixo por pedido
-
-# ============================================================
-# API Mercado Livre
-# ============================================================
-ml_base_url: "https://api.mercadolibre.com"
-ml_request_timeout: 20    # segundos
-ml_retry_delay: 0.1       # segundos entre chamadas em batch
-
-# ============================================================
-# Logging
-# ============================================================
-# "terminal"  → só imprime na tela
-# "file"      → só grava em logs/YYYY-MM-DD.log
-# "both"      → terminal + arquivo (recomendado)
-log_output: "both"
-log_dir: "logs"
-
-# ============================================================
-# Notificação por e-mail (opcional)
-# ============================================================
-# Credenciais ficam no .env (EMAIL_REMETENTE, EMAIL_SENHA_APP,
-# EMAIL_DESTINATARIO). Mude enabled para true para ativar.
+comissao_classico: 0.14
+comissao_premium: 0.19
+imposto_pct: 0.05
+reversa_pct: 0.005
+insumo_fixo: 2.0
+ml_base_url: https://api.mercadolibre.com
+ml_request_timeout: 20
+ml_retry_delay: 0.1
+log_output: both
+log_dir: logs
 email:
   enabled: false
   smtp_host: smtp.gmail.com
   smtp_port: 587
-
-# ============================================================
-# MVP Buybox & Pricing — monitoramento de catálogo
-# ============================================================
-# Esta seção configura o monitor de buybox que estende o pipeline
-# atual de campanhas. Coleta horária, alertas críticos por e-mail
-# e dashboard local em /buybox.
 buybox:
-  # Intervalo entre coletas (executado pelo scheduler.py)
   intervalo_coleta_minutos: 60
-
-  # Cooldowns anti-spam por tipo de alerta (em horas)
-  cooldown_a1_horas: 6   # Perdi buybox
-  cooldown_a2_horas: 2   # Ameaça (concorrente próximo)
-  cooldown_a3_horas: 4   # Concorrente sumiu (oportunidade)
-
-  # Limiares do resumo diário
-  margem_minima_b2_pct: 20.0     # SKUs abaixo disso entram em B2
-  rc_oportunidade_b3_pct: 70.0   # SKUs acima disso com buybox entram em B3
-  fracao_snapshots_b2: 0.5       # B2 dispara se margem baixa em >= 50% dos snapshots
-
-  # Filtro de ruído (diferenças de preço pequenas não geram alerta)
-  diferenca_ruido_rs: 1.00
-
-  # Pricing
-  passo_abaixo_rs: 0.10          # Quanto descer abaixo do concorrente
-
-  # Confirmação anti-falso-positivo do A3
+  cooldown_a1_horas: 6
+  cooldown_a2_horas: 2
+  cooldown_a3_horas: 4
+  margem_minima_b2_pct: 20.0
+  rc_oportunidade_b3_pct: 70.0
+  fracao_snapshots_b2: 0.5
+  diferenca_ruido_rs: 1.0
+  passo_abaixo_rs: 0.1
   ciclos_confirmacao_a3: 2
-
-  # Horário do envio do resumo diário (hora local, 0-23)
   hora_resumo_diario: 8
-
-  # Caminho do banco SQLite (criado em runtime se não existir)
-  db_path: "data/buybox.db"
-
-  # CEP de referência para consulta de prazo de entrega no top 5
-  # (01310-100 = Av. Paulista, centro de SP)
-  cep_referencia: "01310100"
-
-  # Fonte de preço para cálculo de margem do snapshot:
-  #   "suggested_price"  → usa price da campanha started se existir, senão price do item
-  #   "preco_atual"      → usa sempre o price corrente do anúncio
-  fonte_preco: "suggested_price"
-
-  # E-mail dos alertas (separado do e-mail do projeto base para evitar conflito)
+  db_path: data/buybox.db
+  cep_referencia: '01310100'
+  fonte_preco: suggested_price
   email:
-    enabled: false               # desativado até o projeto sair da máquina local
+    enabled: false
     smtp_host: smtp.gmail.com
     smtp_port: 587
     remetente_env: EMAIL_REMETENTE
     senha_env: EMAIL_SENHA_APP
     destinatarios:
-      - luiz.pimentel@kamico.com.br
+    - luiz.pimentel@kamico.com.br
