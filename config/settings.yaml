@@ -26,7 +26,6 @@ buybox:
   passo_abaixo_rs: 0.1
   ciclos_confirmacao_a3: 2
   hora_resumo_diario: 8
-  db_path: data/buybox.db
   cep_referencia: '01310100'
   fonte_preco: suggested_price
   email:

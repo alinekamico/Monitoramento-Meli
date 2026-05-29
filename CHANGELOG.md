@@ -6,6 +6,19 @@ Sistema: **Central de Promoções ML + MVP Buybox** — automação Python que (
 
 ---
 
+## 2026-05-29 — Migração SQLite → MySQL
+
+**Banco de dados migrado de SQLite para MySQL** (`src/buybox/persistencia.py`, `requirements.txt`, `config/contas.yaml`, `config/settings.yaml`, `.env.example`)
+
+- Driver: `PyMySQL>=1.1.0` adicionado ao `requirements.txt`
+- `get_engine()`: lê credenciais do servidor via `MYSQL_HOST/PORT/USER/PASSWORD` no `.env` e monta URL `mysql+pymysql://…?charset=utf8mb4`; `pool_recycle=3600` + `pool_pre_ping=True` para robustez em idle
+- `_migrar_schema()`: substituído `PRAGMA table_info()` (SQLite-only) por `SQLAlchemy inspect()` — agnóstico de banco; os tipos nas `_MIGRACOES` (`REAL`, `TEXT`, `INTEGER`) são válidos em ambos
+- `contas.yaml`: `db_path` renomeado para `db_nome` (nome do banco MySQL, ex.: `best_hair_buybox`); criada instrução de `CREATE DATABASE` nos comentários
+- `settings.yaml`: campo `buybox.db_path` removido (era só documentação — o código já usava `contas.yaml`)
+- **Testes inalterados**: fixture usa `get_engine(conta, db_path=str(tmp_file))` que continua criando SQLite isolado — todos os 64 testes passam
+
+---
+
 ## 2026-05-28 — Multi-conta, cache, RC editável, SKU config, e-mail ativado
 
 **1. Suporte multi-conta (Best Hair + Hair Pro)** (`src/ml_client.py`, `server.py`, `dashboard.html`)

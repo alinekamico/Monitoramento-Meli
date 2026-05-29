@@ -4,10 +4,10 @@ pyyaml>=6.0.1
 flask>=3.0.0
 flask-cors>=4.0.0
 
-# MVP Buybox — persistência local em SQLite via ORM.
-# Escolhemos SQLAlchemy 2.x para abstrair queries e permitir
-# migração futura para Postgres sem reescrever a camada.
+# MVP Buybox — persistência via ORM.
+# SQLAlchemy 2.x abstrai queries; PyMySQL é o driver MySQL puro-Python.
 sqlalchemy>=2.0.0
+PyMySQL>=1.1.0
 
 # Testes da lógica de pricing, regras de alerta e persistência.
 pytest>=8.0.0

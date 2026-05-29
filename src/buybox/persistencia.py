@@ -2,7 +2,7 @@
 Camada de persistência do MVP Buybox.
 
 Responsabilidades:
-  - Criar engine SQLAlchemy apontando para o db_path do settings.yaml
+  - Criar engine SQLAlchemy apontando para o banco MySQL configurado
   - init_db(): cria tabelas se não existirem (idempotente)
   - Helpers de CRUD: salvar_snapshot, ultimo_snapshot, registrar_alerta,
     ultimo_alerta_do_tipo, snapshots_do_dia, snapshots_24h
@@ -17,12 +17,14 @@ apenas operações genéricas reutilizáveis.
 from __future__ import annotations
 
 import json
+import os
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator, Optional
 
 import yaml
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
@@ -68,34 +70,39 @@ def _load_conta_cfg(conta: str) -> dict:
     return cfg.get("contas", {}).get(conta, {})
 
 
-def _resolver_db_path(db_path: str) -> Path:
-    """Caminhos relativos sempre resolvem a partir da raiz do projeto."""
-    p = Path(db_path)
-    if not p.is_absolute():
-        p = _PROJECT_ROOT / p
-    return p
+def _mysql_url(db_nome: str) -> str:
+    """Monta a URL de conexão MySQL a partir das variáveis de ambiente."""
+    load_dotenv()
+    host     = os.getenv("MYSQL_HOST", "localhost")
+    port     = os.getenv("MYSQL_PORT", "3306")
+    user     = os.getenv("MYSQL_USER", "root")
+    password = os.getenv("MYSQL_PASSWORD", "")
+    return f"mysql+pymysql://{user}:{password}@{host}:{port}/{db_nome}?charset=utf8mb4"
 
 
 def get_engine(conta: str = "best_hair", db_path: Optional[str] = None) -> Engine:
     """
-    Retorna engine para a conta (cacheada por conta). Aceita db_path para testes.
+    Retorna engine MySQL para a conta (cacheada por conta).
 
-    Em testes, passar db_path diferente de None ignora o conta e cria
-    engine ad-hoc — útil para isolar fixtures sem tocar em arquivo.
+    Em testes, passar db_path cria um engine SQLite isolado (nunca cacheado)
+    — útil para isolar fixtures sem precisar de servidor MySQL.
     """
     global _engine_cache, _session_factory
 
     if db_path is not None:
-        # Modo ad-hoc (testes): nunca cacheia
+        # Modo ad-hoc (testes): SQLite isolado — nunca cacheia
         url = f"sqlite:///{db_path}" if db_path != ":memory:" else "sqlite:///:memory:"
         return create_engine(url, future=True)
 
     if conta not in _engine_cache:
         conta_cfg = _load_conta_cfg(conta)
-        db_path_str = conta_cfg.get("db_path") or f"data/{conta}.db"
-        path = _resolver_db_path(db_path_str)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        engine = create_engine(f"sqlite:///{path}", future=True)
+        db_nome = conta_cfg.get("db_nome") or f"{conta}_buybox"
+        engine = create_engine(
+            _mysql_url(db_nome),
+            future=True,
+            pool_recycle=3600,   # evita "MySQL server has gone away" por idle
+            pool_pre_ping=True,  # testa a conexão antes de usar
+        )
         _engine_cache[conta] = engine
         _session_factory[conta] = sessionmaker(bind=engine, expire_on_commit=False)
         # Auto-init: cria tabelas e aplica migrações para bancos novos/existentes.
@@ -163,21 +170,17 @@ _MIGRACOES = [
 
 def _migrar_schema(eng: Engine) -> None:
     """
-    Adiciona colunas novas em bancos existentes (SQLite-friendly).
+    Adiciona colunas novas em bancos existentes (compatível com MySQL e SQLite).
     Cada migração checa se a coluna já existe antes de tentar inserir.
     """
-    from sqlalchemy import text
+    from sqlalchemy import inspect as sa_inspect, text
+
+    inspector = sa_inspect(eng)
     with eng.begin() as conn:
         for tabela, coluna, tipo in _MIGRACOES:
-            existentes = {
-                row[1] for row in conn.exec_driver_sql(
-                    f"PRAGMA table_info({tabela})"
-                ).fetchall()
-            }
+            existentes = {col["name"] for col in inspector.get_columns(tabela)}
             if coluna not in existentes:
-                conn.exec_driver_sql(
-                    f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo}"
-                )
+                conn.execute(text(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo}"))
 
 
 @contextmanager

@@ -281,10 +281,11 @@ def coletar(skus_filtro: Optional[Iterable[str]] = None,
     seller_id = ml_client.get_seller_id(conta)
 
     inicio = time.time()
-    _print(f"Coleta buybox iniciada — {len(skus)} SKU(s)")
+    _print(f"Coleta buybox iniciada — {len(skus)} SKU(s) — conta: {conta}")
     _log_jsonl({
         "evento": "coleta_inicio",
         "ts": datetime.now().isoformat(),
+        "conta": conta,
         "total_skus": len(skus),
     })
 
@@ -338,6 +339,7 @@ def coletar(skus_filtro: Optional[Iterable[str]] = None,
                     _log_jsonl({
                         "evento": "snapshot_salvo",
                         "ts": datetime.now().isoformat(),
+                        "conta": conta,
                         "snapshot_id": snap_id,
                         "sku": sku, "item_id": item_id,
                         "preco_atual": dom.preco_atual,
@@ -367,6 +369,7 @@ def coletar(skus_filtro: Optional[Iterable[str]] = None,
     _log_jsonl({
         "evento": "coleta_fim",
         "ts": datetime.now().isoformat(),
+        "conta": conta,
         "duracao_s": duracao,
         **stats,
     })

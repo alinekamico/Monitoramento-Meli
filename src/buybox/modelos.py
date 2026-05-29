@@ -9,8 +9,7 @@ Define:
 
 Convenções:
   - Timestamps sempre em UTC (datetime.now(timezone.utc)).
-  - Preço/percentuais em float (sqlite não tem Decimal nativo — precisão é
-    suficiente para R$ × % no nosso volume).
+  - Preço/percentuais em Float (precisão suficiente para R$ × % no nosso volume).
 """
 
 from __future__ import annotations

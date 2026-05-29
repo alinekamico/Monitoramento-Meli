@@ -3,14 +3,16 @@
 # ============================================================
 # Cada conta tem:
 #   nome      : exibido no dashboard e nos logs
-#   db_path   : banco SQLite exclusivo (relativo à raiz do projeto)
+#   db_nome   : nome do banco MySQL exclusivo desta conta
+#               (credenciais do servidor em MYSQL_* no .env)
 #   env_sufixo: sufixo das variáveis de ambiente no .env
 #               ex: "BESTHAIR" → ML_ACCESS_TOKEN_BESTHAIR
 #
 # Para adicionar uma 3ª conta:
 #   1. Copie um bloco abaixo e ajuste os campos
-#   2. Adicione as vars ML_*_NOVACONTA no .env
-#   3. Rode: python scripts/gerar_tokens.py --conta nova_conta
+#   2. Crie o banco no MySQL: CREATE DATABASE nova_conta_buybox CHARACTER SET utf8mb4;
+#   3. Adicione as vars ML_*_NOVACONTA no .env
+#   4. Rode: python scripts/gerar_tokens.py --conta nova_conta
 # ============================================================
 
 conta_padrao: "best_hair"
@@ -18,10 +20,10 @@ conta_padrao: "best_hair"
 contas:
   best_hair:
     nome: "The Best Hair"
-    db_path: "data/best_hair.db"
+    db_nome: "best_hair_buybox"
     env_sufixo: "BESTHAIR"
 
   hair_pro:
     nome: "Hair Pro"
-    db_path: "data/hair_pro.db"
+    db_nome: "hair_pro_buybox"
     env_sufixo: "HAIRPRO"

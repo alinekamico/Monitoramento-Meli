@@ -134,6 +134,9 @@ Tokens: renovados em 401 via `refresh_access_token`. Credenciais compartilhadas 
 
 ## Schema do banco (com migrações automáticas)
 
+Banco: **MySQL** (um banco por conta: `best_hair_buybox`, `hair_pro_buybox`).
+Credenciais do servidor em `MYSQL_HOST/PORT/USER/PASSWORD` no `.env`.
+
 Tabela `snapshots`:
 - Campos básicos: `sku`, `item_id`, `coletado_em`, `preco_atual`, `preco_1o`, `preco_2o`, etc.
 - **Campos novos da iteração de campanhas** (adicionados via `_migrar_schema`):
@@ -141,9 +144,9 @@ Tabela `snapshots`:
   - `campanha_min_price`, `campanha_max_price` — faixa válida (SMART/DEAL)
   - `campanha_original_price` — base para rebate fixo em R$
 
-`persistencia._migrar_schema(engine)` aplica `ALTER TABLE ADD COLUMN` para bancos pré-existentes. **Idempotente** — checa `PRAGMA table_info` antes.
+`persistencia._migrar_schema(engine)` aplica `ALTER TABLE ADD COLUMN` para bancos pré-existentes. **Idempotente** — usa `SQLAlchemy inspect()` para checar colunas existentes (funciona com MySQL e SQLite).
 
-`_MIGRACOES` é uma lista de `(tabela, coluna, tipo)`. Adicione novas linhas se precisar de outras colunas no futuro.
+`_MIGRACOES` é uma lista de `(tabela, coluna, tipo)`. Adicione novas linhas se precisar de outras colunas no futuro. Os tipos `REAL`, `TEXT` e `INTEGER` são válidos em MySQL.
 
 ## Decisões de design importantes
 
@@ -244,7 +247,7 @@ pytest tests/ -v
 ## Logs e observabilidade
 
 - `logs/buybox-YYYY-MM-DD.log` — JSON-lines por evento (`snapshot_salvo`, `alerta_*`, `ciclo_*`, `erro_*`)
-- `data/buybox.db` — SQLite (3 tabelas) — abrir com DBeaver/Beekeeper para inspeção
+- MySQL (`best_hair_buybox` / `hair_pro_buybox`) — 3 tabelas — abrir com DBeaver/Beekeeper/MySQL Workbench para inspeção
 - `data/.ultimo_resumo_diario` — stamp YYYY-MM-DD para evitar resumo duplicado
 - Tabela `alertas` — auditoria completa: enviados + suprimidos (com motivo)
 

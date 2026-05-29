@@ -1712,7 +1712,7 @@
   const API           = (force = false) => `${_BASE}/api/campaigns?${_cParam()}${force ? '&force=true' : ''}`;
   const API_BX_LISTA  = () => `${_BASE}/api/buybox/lista?${_cParam()}`;
   const API_BX_SKU    = (sku, itemId) => `${_BASE}/api/buybox/sku/${sku}?item_id=${itemId}&${_cParam()}`;
-  const API_BX_COLETAR   = `${_BASE}/api/buybox/forcar-coleta`;
+  const API_BX_COLETAR   = () => `${_BASE}/api/buybox/forcar-coleta?${_cParam()}`;
   const API_BX_SKUS_CFG  = () => `${_BASE}/api/buybox/skus-configurados?${_cParam()}`;
   const API_BX_CAMPANHAS = (sku, itemId) => `${_BASE}/api/buybox/sku/${sku}/campanhas?item_id=${itemId}&${_cParam()}`;
   const API_BX_PRAZOS    = (sku, itemId) => `${_BASE}/api/buybox/sku/${sku}/prazos?item_id=${itemId}&${_cParam()}`;
@@ -2378,7 +2378,7 @@
     const inicio = Date.now();
     try {
       const body = todos ? '{}' : JSON.stringify({skus});
-      const res  = await fetch(API_BX_COLETAR, {
+      const res  = await fetch(API_BX_COLETAR(), {
         method:  'POST',
         headers: {'Content-Type': 'application/json'},
         body,

@@ -487,22 +487,23 @@ sudo timedatectl set-timezone America/Sao_Paulo
 Importante porque o `hora_resumo_diario: 8` no settings.yaml usa hora **local**.
 
 #### Backup do banco
-SQLite é arquivo único. Faça snapshot diário com cron:
+O banco é MySQL. Faça backup diário com `mysqldump`:
 ```cron
-0 3 * * * cp /opt/buybox/data/buybox.db /opt/buybox/data/buybox.db.$(date +\%Y\%m\%d) && find /opt/buybox/data/buybox.db.* -mtime +14 -delete
+0 3 * * * mysqldump -u $MYSQL_USER -p$MYSQL_PASSWORD best_hair_buybox | gzip > /opt/buybox/backups/best_hair_$(date +\%Y\%m\%d).sql.gz
+0 3 * * * find /opt/buybox/backups/ -mtime +14 -delete
 ```
-Ou (melhor): sync diário para um bucket S3.
+Ou: sync diário para um bucket S3.
 
-#### Quando migrar para RDS Postgres
-O SQLite cobre tranquilo até ~100 SKUs / ciclos horários. Quando passar disso ou precisar de múltiplos serviços lendo ao mesmo tempo:
+#### Usar RDS MySQL em vez de instância local
+Para alta disponibilidade ou múltiplos workers lendo ao mesmo tempo:
 
-1. Provisione RDS Postgres (`db.t4g.micro` já basta)
-2. Mude `db_path` no `settings.yaml` para uma URL de conexão (`postgresql://user:pass@host/db`)
-3. Ajuste `get_engine()` em `persistencia.py` para detectar e usar a URL
-4. Rode `init_db()` no banco novo — SQLAlchemy cria tudo do zero
-5. Migração de dados: `pgloader` faz SQLite→Postgres sem dor
+1. Provisione RDS MySQL (`db.t3.micro` já basta para 23 SKUs)
+2. Crie os bancos: `CREATE DATABASE best_hair_buybox CHARACTER SET utf8mb4;`
+3. Configure `MYSQL_HOST/USER/PASSWORD` apontando para o RDS endpoint
+4. Rode `python -c "from src.buybox.persistencia import init_db; init_db('best_hair')"` — SQLAlchemy cria tudo do zero
+5. Migração de dados históricos: `mysqldump` do servidor local + restore no RDS
 
-A camada de persistência foi feita justamente para essa troca ser indolor — todas as queries usam SQLAlchemy ORM, não SQL puro.
+A camada de persistência usa SQLAlchemy ORM — nenhuma query SQL puro precisa ser reescrita.
 
 #### Credenciais (recomendado)
 Em vez de `.env` em arquivo, use **AWS Secrets Manager**:
