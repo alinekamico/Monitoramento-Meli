@@ -144,7 +144,13 @@ python server.py
 # abrir http://localhost:5000
 ```
 
-Aba **Campanhas**: visão da Central de Promoções — cada linha é clicável e navega para a aba Buybox com o MLB pré-filtrado.
+**Seletor de conta** (topo direito): alterna entre contas ML cadastradas (ex: Best Hair / Hair Pro). Os dados são recarregados automaticamente ao trocar.
+
+**RC mínimo editável**: card RC mínimo tem botão ✏️ que abre editor inline e persiste o novo valor em `settings.yaml` via PUT `/api/rc-minimo`.
+
+**⚙️ Config de SKUs**: botão no header abre modal com tabela editável de `custo`, `peso` e `tipo_anuncio` por SKU. Persiste em `skus.yaml` via PUT `/api/skus`.
+
+Aba **Campanhas**: visão da Central de Promoções com cache de 10 min (paralelo, 3 workers). Indicador de idade do cache na barra. Cada linha é clicável e navega para a aba Buybox com o MLB pré-filtrado.
 
 Aba **Buybox**: lista de anúncios com foto, posição, RC, preço ótimo + filtros (Todos / Com buybox / Em risco / Oportunidade / Off-catálogo / Com estoque) + botão **"Coletar agora ▾"** (dropdown com checkboxes de SKUs) + modal de detalhe com:
   - Header com foto + link "ver no ML →"
@@ -152,9 +158,9 @@ Aba **Buybox**: lista de anúncios com foto, posição, RC, preço ótimo + filt
   - Sugestão de preço
   - **Breakdown da margem** linha a linha (preço atual × preço candidato)
   - **Top 5 concorrentes** com vendas do seller, **RC pra vencer** e **prazo de entrega para SP** (lazy load)
-  - **Campanhas disponíveis** (lazy load — consulta ao ML em tempo real) com vigência + badge "★ MELHOR"
+  - **Campanhas disponíveis** (lazy load — consulta ao ML em tempo real) com vigência + badge "★ MELHOR"; botões **ACEITAR ↗** / **RECUSAR ↗** abrem a Central de Promoções ML filtrada pelo MLB em nova aba
   - Gráficos de posição com filtros **24h / 7d / 30d / Personalizado**
-  - **Gráfico Preço × Vendas** dual-eixo com seletor: Preço + Vendas / Só preço / Vendas (un) / Vendas (R$) / Top 5 concorrentes; blocos de resumo 7d acima (unidades, receita, ticket médio)
+  - **Gráfico Preço × Vendas** dual-eixo com seletor: Preço + Vendas / Top 5 concorrentes; blocos de resumo 7d acima (unidades, receita, ticket médio)
   - Foto do anúncio com badge azul mostrando nº de campanhas `ACEITAR` disponíveis
 
 ---
@@ -258,13 +264,13 @@ buybox:
   cep_referencia: "01310100"         # CEP usado no cálculo de prazo do top 5 (Av. Paulista)
 
   email:
-    enabled: false                   # ative quando credenciais validadas
+    enabled: true                    # alertas ativos — desative com false se necessário
     smtp_host: smtp.gmail.com
     smtp_port: 587
     remetente_env: EMAIL_REMETENTE
     senha_env: EMAIL_SENHA_APP
     destinatarios:
-      - vc@empresa.com
+      - luiz.pimentel@kamico.com.br
 ```
 
 ---
@@ -274,11 +280,14 @@ buybox:
 | Método | URL | Descrição |
 |---|---|---|
 | GET | `/api/health` | Sanidade |
-| GET | `/api/campaigns` | Estado das campanhas (legado) |
+| GET | `/api/campaigns?conta=` | Estado das campanhas (legado) — cache 10 min, `?force=true` para ignorar |
+| GET/PUT | `/api/rc-minimo` | Lê ou grava o RC mínimo em `settings.yaml` (PUT: `{"rc_minimo": 65.0}`) |
+| GET/PUT | `/api/skus` | Lê ou grava custo/peso/tipo_anuncio por SKU em `skus.yaml` |
 | GET | `/api/buybox/lista` | Último snapshot de cada (SKU, MLB) + summary |
 | GET | `/api/buybox/sku/<sku>?item_id=...&periodo=24h\|7d\|30d` | Detalhe + top 5 (com RC pra vencer) + histórico no período + série de preços + **breakdown da margem**. Aceita `?desde=...&ate=...` ISO |
 | GET | `/api/buybox/sku/<sku>/campanhas?item_id=...` | Campanhas started + candidatas (LIVE no ML) com vigência e flag `melhor_rc` |
 | GET | `/api/buybox/sku/<sku>/prazos?item_id=...` | Prazo de entrega de cada concorrente do top 5 para o CEP de referência (LIVE no ML) |
+| GET | `/api/buybox/sku/<sku>/vendas?item_id=...&periodo=7d` | Histórico de vendas alinhado com snapshots (unidades + receita por janela de tempo) |
 | GET | `/api/buybox/sku/<sku>/alertas` | Histórico de alertas dos últimos 7 dias |
 | GET | `/api/buybox/skus-configurados` | Lista SKUs do `skus.yaml` (alimenta o dropdown do botão "Coletar agora") |
 | POST | `/api/buybox/forcar-coleta` | Dispara coleta on-demand (body opcional `{"skus":["WLK004"]}`) |

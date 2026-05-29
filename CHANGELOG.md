@@ -6,6 +6,42 @@ Sistema: **Central de Promoções ML + MVP Buybox** — automação Python que (
 
 ---
 
+## 2026-05-28 — Multi-conta, cache, RC editável, SKU config, e-mail ativado
+
+**1. Suporte multi-conta (Best Hair + Hair Pro)** (`src/ml_client.py`, `server.py`, `dashboard.html`)
+- `_get_env()` recarrega o `.env` via `load_dotenv(override=True)` quando a variável não está no `os.environ` no momento do start do servidor — corrige 404 em contas cujo token chegou depois do boot
+- `trocarConta()` limpa `allData`/`bxData` imediatamente e exibe estado de carregamento, eliminando contaminação de dados entre contas
+- Parâmetro `?conta=` propagado por todos os endpoints
+
+**2. Performance: campanhas paralelas + cache** (`server.py`, `dashboard.html`)
+- `ThreadPoolExecutor(max_workers=3)` para processar SKUs em paralelo → 70 s → ~23 s (sem throttling do ML)
+- `_CAMPAIGN_CACHE` module-level com TTL de 10 min — resposta subsequente em ~330 ms
+- `?force=true` para ignorar cache ("Atualizar" do dashboard)
+- Indicador de idade do cache em "Atualizado às…": "Cache de N min atrás — clique Atualizar para forçar"
+
+**3. RC mínimo editável pelo painel** (`server.py`, `dashboard.html`)
+- Botão ✏️ no card RC mínimo abre campo numérico inline
+- PUT `/api/rc-minimo` persiste em `config/settings.yaml` e limpa o cache
+- Validação 0–300; toast verde/vermelho no feedback
+
+**4. Modal de configuração de SKUs** (`server.py`, `dashboard.html`)
+- Botão ⚙️ no header (esquerdo do seletor de conta) abre modal com tabela editável
+- Edita `custo`, `peso` e `tipo_anuncio` (Clássico / Premium) por SKU
+- GET/PUT `/api/skus` — persiste em `config/skus.yaml` e limpa o cache
+- Layout CSS Grid com header fixo fora do scroll (corrige overlap sticky de thead)
+- Inputs com borda transparente em idle e glow accent no foco
+
+**5. ACEITAR/RECUSAR → link Central de Promoções ML** (`dashboard.html`)
+- Nos cards "Campanhas disponíveis" do modal de detalhe do Buybox, as tags viram `<button>` com `↗`
+- `irParaPromocoesMl(itemId)` abre `mercadolivre.com.br/anuncios/lista/promos?search=<MLB_NUM>` em nova aba
+- Campanha "participando" continua como `<span>` (sem ação)
+- `decisaoTag()` do painel de Campanhas não foi alterada
+
+**6. E-mail de alertas ativado** (`config/settings.yaml`)
+- `buybox.email.enabled: true` — alertas A1/A2/A3 e resumo diário B1/B2/B3 passam a enviar para `luiz.pimentel@kamico.com.br`
+
+---
+
 ## 2026-05-28 — Bug pricing: subida de preço sem ganho de RC + tooltip Top 5
 
 **1. Bug fix: sugestão de subida só quando RC melhora** (`src/buybox/pricing.py`)

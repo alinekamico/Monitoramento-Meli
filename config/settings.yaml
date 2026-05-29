@@ -30,7 +30,7 @@ buybox:
   cep_referencia: '01310100'
   fonte_preco: suggested_price
   email:
-    enabled: false
+    enabled: true
     smtp_host: smtp.gmail.com
     smtp_port: 587
     remetente_env: EMAIL_REMETENTE

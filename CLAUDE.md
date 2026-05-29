@@ -165,13 +165,17 @@ Tabela `snapshots`:
 
 - **6 fases concluídas + várias iterações de refinamento**: setup, coletor, alertas, scheduler, dashboard, polimento + ajustes de pricing (rebate, faixa de campanha, campanha externa, breakdown).
 - **62 testes verdes** (pricing, catálogo, persistência, regras, avaliador).
-- **E-mail validado** com Gmail SMTP via senha de app (desativado em config no momento por estar em ambiente local).
+- **E-mail de alertas ATIVO** (`buybox.email.enabled: true`) — envia para `luiz.pimentel@kamico.com.br` via Gmail SMTP.
+- **Multi-conta** (Best Hair + Hair Pro) — seletor no dashboard, `?conta=` em todos os endpoints, `_get_env()` recarrega `.env` sob demanda.
+- **Cache de campanhas** — 10 min TTL por conta, `?force=true` para bypassar; processamento paralelo com 3 workers (~23 s → 330 ms).
+- **RC mínimo editável** pelo dashboard — ✏️ no card, PUT `/api/rc-minimo`, persiste em `settings.yaml`.
+- **Modal ⚙️ de SKUs** — edita `custo`/`peso`/`tipo_anuncio` pelo dashboard, PUT `/api/skus`, persiste em `skus.yaml`.
 - **Aba Buybox no dashboard** com:
   - Tabela com filtros (Todos / Buybox / Em risco / Oportunidade / Off-catálogo / Com estoque) + busca
   - Header das colunas **sticky** (cola abaixo das tabs ao rolar)
   - Chip destacado para a coluna Posição
   - Botão **"Coletar agora ▾"** com dropdown de checkboxes (lê `/api/buybox/skus-configurados`)
-  - Modal de detalhe com: snapshot atual, sugestão, breakdown da margem (cards lado a lado), top 5, campanhas disponíveis (lazy load), gráfico de posição 24h, gráfico de linhas de preços por concorrente
+  - Modal de detalhe com: snapshot atual, sugestão, breakdown da margem (cards lado a lado), top 5, campanhas disponíveis (lazy load) com botões **ACEITAR ↗ / RECUSAR ↗** que abrem a Central de Promoções ML filtrada pelo MLB, gráfico de posição, gráfico Preço × Vendas dual-eixo
   - Toast de feedback (verde/vermelho/azul) para ações assíncronas
 
 ## O que ainda falta
@@ -205,12 +209,13 @@ buybox:
   fonte_preco: "suggested_price"
 
   email:
-    enabled: false       # ativar em produção após deploy AWS
+    enabled: true        # alertas ativos — destinatário: luiz.pimentel@kamico.com.br
     smtp_host: smtp.gmail.com
     smtp_port: 587
     remetente_env: EMAIL_REMETENTE
     senha_env: EMAIL_SENHA_APP
-    destinatarios: []
+    destinatarios:
+      - luiz.pimentel@kamico.com.br
 ```
 
 ## Atalhos úteis (CLI)
