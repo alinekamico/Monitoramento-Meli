@@ -1,0 +1,18 @@
+[Unit]
+Description=Buybox Dashboard - Flask server
+After=network.target buybox-scheduler.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/buybox
+EnvironmentFile=/opt/buybox/.env
+ExecStart=/opt/buybox/venv/bin/python server.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=buybox-server
+
+[Install]
+WantedBy=multi-user.target

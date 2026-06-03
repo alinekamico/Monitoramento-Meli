@@ -1,0 +1,18 @@
+[Unit]
+Description=Buybox Scheduler - coleta horaria e alertas ML
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/buybox
+EnvironmentFile=/opt/buybox/.env
+ExecStart=/opt/buybox/venv/bin/python scheduler.py
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=buybox-scheduler
+
+[Install]
+WantedBy=multi-user.target

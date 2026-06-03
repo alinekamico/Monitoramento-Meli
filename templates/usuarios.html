@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Usuarios - Central ML</title>
+  <style>
+    :root{--bg:#0f1117;--surface:#1a1d27;--border:#2a2d3a;--text:#e2e8f0;--muted:#64748b;--accent:#facc15;--green:#22c55e;--red:#ef4444;--blue:#3b82f6;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;min-height:100vh;}
+    header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+    .logo{display:flex;align-items:center;gap:10px;}
+    .logo-icon{width:32px;height:32px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;}
+    .logo-text h1{font-size:15px;font-weight:600;}
+    .logo-text p{font-size:11px;color:var(--muted);}
+    .hdr-right{display:flex;gap:12px;align-items:center;}
+    a.btn,button.btn{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:500;text-decoration:none;display:inline-block;}
+    .btn-primary{background:var(--accent);color:#0f1117;}
+    .btn-ghost{background:none;color:var(--muted);border:1px solid var(--border);}
+    .btn-ghost:hover{color:var(--text);}
+    main{padding:24px;}
+    .page-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+    .page-hdr h2{font-size:16px;font-weight:600;}
+    .page-hdr p{font-size:12px;color:var(--muted);margin-top:2px;}
+    table{width:100%;border-collapse:collapse;}
+    .table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+    th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);}
+    th{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;background:rgba(255,255,255,.03);}
+    tr:last-child td{border-bottom:none;}
+    tr:hover td{background:rgba(255,255,255,.02);}
+    .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;}
+    .badge-admin{background:rgba(250,204,21,.15);color:var(--accent);}
+    .badge-gerente{background:rgba(59,130,246,.15);color:var(--blue);}
+    .badge-operador{background:rgba(100,116,139,.15);color:var(--muted);}
+    .badge-ativo{background:rgba(34,197,94,.15);color:var(--green);}
+    .badge-inativo{background:rgba(239,68,68,.15);color:var(--red);}
+    .acts{display:flex;gap:6px;}
+    .btn-sm{padding:4px 10px;font-size:12px;border-radius:6px;border:none;cursor:pointer;}
+    .btn-edit{background:rgba(59,130,246,.2);color:var(--blue);}
+    .btn-off{background:rgba(239,68,68,.2);color:var(--red);}
+    .btn-on{background:rgba(34,197,94,.2);color:var(--green);}
+    .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;}
+    .overlay.open{display:flex;}
+    .modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:400px;max-width:95vw;}
+    .modal h3{margin-bottom:16px;font-size:15px;}
+    .fg{margin-bottom:14px;}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;}
+    input,select{width:100%;padding:8px 10px;background:#0f1117;border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;}
+    input:focus,select:focus{outline:none;border-color:var(--accent);}
+    .form-acts{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;}
+    .erro{color:var(--red);font-size:12px;margin-top:8px;display:none;}
+    #loading{text-align:center;padding:32px;color:var(--muted);}
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="logo-icon">&#x1F6D2;</div>
+    <div class="logo-text"><h1>Central de Promocoes ML</h1><p>Gerenciamento de usuarios</p></div>
+  </div>
+  <div class="hdr-right">
+    <a href="/" class="btn btn-ghost">&#8592; Voltar ao painel</a>
+    <button class="btn btn-primary" onclick="abrirModal()">+ Novo usuario</button>
+    <a href="/logout" class="btn btn-ghost">Sair</a>
+  </div>
+</header>
+<main>
+  <div id="loading">Carregando usuarios...</div>
+  <div id="conteudo" style="display:none">
+    <div class="page-hdr"><div><h2>Usuarios do sistema</h2><p>Crie, edite e desative contas de acesso ao painel.</p></div></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Status</th><th>Ultimo acesso</th><th>Acoes</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+<div class="overlay" id="modal" onclick="if(event.target===this)fechar()">
+  <div class="modal">
+    <h3 id="m-titulo">Novo usuario</h3>
+    <div class="fg"><label>Nome completo</label><input id="f-nome" type="text"/></div>
+    <div class="fg"><label>E-mail</label><input id="f-email" type="email"/></div>
+    <div class="fg"><label id="lbl-senha">Senha</label><input id="f-senha" type="password"/></div>
+    <div class="fg"><label>Perfil</label>
+      <select id="f-perfil">
+        <option value="operador">Operador (somente visualizacao)</option>
+        <option value="gerente">Gerente (sem gestao de usuarios)</option>
+        <option value="admin">Admin (acesso total)</option>
+      </select>
+    </div>
+    <div class="erro" id="f-erro"></div>
+    <div class="form-acts">
+      <button class="btn btn-ghost" onclick="fechar()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvar()">Salvar</button>
+    </div>
+  </div>
+</div>
+<script>
+const API="/api/usuarios";
+let editId=null;
+async function carregar(){
+  try{
+    const r=await fetch(API,{credentials:"include"});
+    if(r.status===403){location.href="/";return;}
+    const lista=await r.json();
+    document.getElementById("loading").style.display="none";
+    document.getElementById("conteudo").style.display="";
+    document.getElementById("tbody").innerHTML=lista.map(u=>`
+      <tr>
+        <td>${u.nome}</td><td>${u.email}</td>
+        <td><span class="badge badge-${u.perfil}">${u.perfil}</span></td>
+        <td><span class="badge ${u.ativo?"badge-ativo":"badge-inativo"}">${u.ativo?"Ativo":"Inativo"}</span></td>
+        <td>${u.ultimo_acesso?new Date(u.ultimo_acesso).toLocaleString("pt-BR"):"&#8212;"}</td>
+        <td class="acts">
+          <button class="btn-sm btn-edit" onclick="editar(${u.id})">Editar</button>
+          <button class="btn-sm ${u.ativo?"btn-off":"btn-on"}" onclick="toggle(${u.id},${u.ativo})">${u.ativo?"Desativar":"Ativar"}</button>
+        </td>
+      </tr>`).join("");
+  }catch(e){document.getElementById("loading").textContent="Erro ao carregar.";}
+}
+function abrirModal(id){
+  editId=id||null;
+  document.getElementById("m-titulo").textContent=id?"Editar usuario":"Novo usuario";
+  document.getElementById("lbl-senha").textContent=id?"Nova senha (em branco = nao alterar)":"Senha";
+  document.getElementById("f-nome").value="";
+  document.getElementById("f-email").value="";
+  document.getElementById("f-senha").value="";
+  document.getElementById("f-erro").style.display="none";
+  document.getElementById("f-email").disabled=!!id;
+  if(id){
+    fetch(API,{credentials:"include"}).then(r=>r.json()).then(lista=>{
+      const u=lista.find(x=>x.id===id);
+      if(u){document.getElementById("f-nome").value=u.nome;document.getElementById("f-email").value=u.email;document.getElementById("f-perfil").value=u.perfil;}
+    });
+  }
+  document.getElementById("modal").classList.add("open");
+}
+function editar(id){abrirModal(id);}
+function fechar(){document.getElementById("modal").classList.remove("open");editId=null;}
+async function salvar(){
+  const nome=document.getElementById("f-nome").value.trim();
+  const email=document.getElementById("f-email").value.trim();
+  const senha=document.getElementById("f-senha").value;
+  const perfil=document.getElementById("f-perfil").value;
+  const erro=document.getElementById("f-erro");
+  if(!nome){erro.textContent="Nome obrigatorio.";erro.style.display="";return;}
+  if(!editId&&!email){erro.textContent="E-mail obrigatorio.";erro.style.display="";return;}
+  if(!editId&&senha.length<8){erro.textContent="Senha: minimo 8 caracteres.";erro.style.display="";return;}
+  erro.style.display="none";
+  const body=editId?{nome,perfil,...(senha?{senha}:{})}:{nome,email,senha,perfil};
+  const r=await fetch(editId?`${API}/${editId}`:API,{method:editId?"PUT":"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(body)});
+  const d=await r.json();
+  if(!r.ok){erro.textContent=d.erro||"Erro ao salvar.";erro.style.display="";return;}
+  fechar();carregar();
+}
+async function toggle(id,ativo){
+  if(!confirm(ativo?"Desativar este usuario?":"Reativar este usuario?"))return;
+  await fetch(`${API}/${id}`,{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({ativo:!ativo})});
+  carregar();
+}
+carregar();
+</script>
+</body>
+</html>

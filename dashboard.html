@@ -1086,13 +1086,17 @@
     <button id="btn-refresh" onclick="loadActiveTab(true)">
       <span id="refresh-icon">↻</span> Atualizar
     </button>
-  </div>
+  
+    <span id="user-nome" style="font-size:11px;color:var(--muted)"></span>
+    <a href="/logout" id="btn-logout" style="background:transparent;border:1px solid var(--border);color:var(--muted);padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;transition:all 0.15s" onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">Sair</a></div>
 </header>
 
 <!-- Nav de abas -->
 <nav class="tabs">
   <button class="tab-btn active" data-tab="campanhas" onclick="switchTab('campanhas',this)">Campanhas</button>
   <button class="tab-btn"        data-tab="buybox"    onclick="switchTab('buybox',this)">Buybox</button>
+
+  <a class="tab-btn" id="tab-admin-link" href="/usuarios" style="display:none;">Usuários</a>
 </nav>
 
 <!-- ABA CAMPANHAS (preservada do original) -->
@@ -1525,7 +1529,7 @@
 
   async function _carregarContas() {
     try {
-      const res = await fetch('http://localhost:5000/api/contas');
+      const res = await fetch('/api/contas');
       const contas = await res.json();
       const sel = document.getElementById('conta-select');
       if (!sel) return;
@@ -1706,7 +1710,7 @@
   }
 
   // URLs de API — sempre incluem o parâmetro ?conta= da conta ativa
-  const _BASE = 'http://localhost:5000';
+  const _BASE = '';
   // force=true envia dado fresco (ignora cache de 10 min do servidor).
   // Usado quando o usuário clica em Atualizar. Troca de conta usa cache.
   const API           = (force = false) => `${_BASE}/api/campaigns?${_cParam()}${force ? '&force=true' : ''}`;
@@ -1762,8 +1766,8 @@
       const idadeMin  = Math.round((Date.now() / 1000 - json.timestamp) / 60);
       document.getElementById('last-updated').textContent =
         fromCache
-          ? `Cache de ${idadeMin} min atrás (${ts.toLocaleTimeString('pt-BR')}) — clique Atualizar para forçar`
-          : 'Atualizado às ' + ts.toLocaleTimeString('pt-BR');
+          ? `Cache de ${idadeMin} min atrás (${ts.toLocaleTimeString('pt-BR', {timeZone:'America/Sao_Paulo'})}) — clique Atualizar para forçar`
+          : ts.toLocaleString('pt-BR', {timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}).replace(',','  —');
 
       render();
       _buildCampaignBadges();
@@ -2016,7 +2020,7 @@
 
       const ts = new Date(json.timestamp * 1000);
       document.getElementById('last-updated').textContent =
-        'Atualizado às ' + ts.toLocaleTimeString('pt-BR');
+        ts.toLocaleString('pt-BR', {timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}).replace(',','  —');
 
       renderBx();
     } catch (err) {
@@ -2550,12 +2554,12 @@
 
   function _fmtHoraOuData(iso, periodo) {
     try {
-      const d = new Date(iso);
+      const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
       // Períodos longos: mostra dia/mês; curtos: hora:min
       if (periodo === '7d' || periodo === '30d' || periodo === 'custom') {
         return d.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
       }
-      return d.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
+      return d.toLocaleTimeString('pt-BR', {timeZone:'America/Sao_Paulo', hour: '2-digit', minute: '2-digit'});
     } catch { return ''; }
   }
 
@@ -2909,7 +2913,7 @@
 
   function _fmtTooltipDate(iso, periodo) {
     try {
-      const d = new Date(iso);
+      const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
       if (isNaN(d)) return '';
       const dias   = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
       const meses  = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
@@ -3509,7 +3513,7 @@
   function formatarVigencia(start, finish) {
     function _fmt(iso) {
       if (!iso) return null;
-      const d = new Date(iso);
+      const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
       if (isNaN(d.getTime())) return null;
       return d.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
     }
@@ -3583,6 +3587,19 @@
 
   // Auto-load na abertura
   loadData();
+
+  // Mostrar aba Usuários apenas para admin + exibir nome
+  fetch('/api/auth/me', {credentials: 'include'})
+    .then(r => r.json())
+    .then(u => {
+      if (u && u.perfil === 'admin') {
+        const link = document.getElementById('tab-admin-link');
+        if (link) link.style.display = '';
+      }
+      const el = document.getElementById('user-nome');
+      if (el && u && u.nome) el.textContent = u.nome;
+    })
+    .catch(() => {});
 </script>
 </body>
 </html>

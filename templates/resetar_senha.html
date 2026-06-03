@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Redefinir senha — Central de Promoções ML</title>
+  <style>
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
+      --text: #e2e8f0; --muted: #64748b; --accent: #facc15;
+      --green: #22c55e; --red: #ef4444; --blue: #3b82f6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px; min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 40px 36px; width: 100%; max-width: 420px;
+    }
+    .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+    .logo-icon {
+      width: 40px; height: 40px; background: var(--accent);
+      border-radius: 10px; display: flex; align-items: center;
+      justify-content: center; font-size: 20px;
+    }
+    .logo-text h1 { font-size: 16px; font-weight: 700; color: var(--text); }
+    .logo-text p { font-size: 12px; color: var(--muted); }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    input[type=password] {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); padding: 10px 12px;
+      font-size: 13px; outline: none; transition: border 0.15s; margin-bottom: 16px;
+    }
+    input[type=password]:focus { border-color: var(--accent); }
+    .btn-submit {
+      -webkit-appearance: none !important;
+      appearance: none !important;
+      width: 100%; background: var(--accent); color: #0f1117;
+      border: none; border-radius: 8px; padding: 11px;
+      font-size: 13px; font-weight: 700; cursor: pointer; transition: opacity 0.15s;
+    }
+    .btn-submit:hover { opacity: 0.9; }
+    .erro {
+      background: #2a1515; border: 1px solid #4a2020;
+      color: #fca5a5; border-radius: 8px; padding: 10px 12px;
+      font-size: 12px; margin-bottom: 16px;
+    }
+    .aviso {
+      background: #1e2a1e; border: 1px solid #2d4a2d;
+      color: #86efac; border-radius: 8px; padding: 12px 14px;
+      font-size: 12px; margin-bottom: 20px; line-height: 1.5;
+    }
+    .alerta {
+      background: #2a1515; border: 1px solid #7f1d1d;
+      color: #fca5a5; border-radius: 8px; padding: 20px;
+      text-align: center; font-size: 13px; line-height: 1.6;
+    }
+    .alerta .icon { font-size: 32px; margin-bottom: 12px; }
+    .sucesso-box {
+      text-align: center; padding: 8px 0;
+    }
+    .sucesso-box .icon { font-size: 40px; margin-bottom: 12px; }
+    .sucesso-box h2 { font-size: 18px; font-weight: 700; color: var(--green); margin-bottom: 8px; }
+    .sucesso-box p { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 24px; }
+    .requisitos { font-size: 11px; color: var(--muted); margin-bottom: 20px; line-height: 1.6; }
+    .requisitos ul { padding-left: 16px; }
+    .voltar {
+      display: block; text-align: center; margin-top: 20px;
+      color: var(--muted); font-size: 12px; text-decoration: none;
+    }
+    .voltar:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <div class="logo-icon">🛒</div>
+      <div class="logo-text">
+        <h1>Central de Promoções ML</h1>
+        <p>Redefinir senha</p>
+      </div>
+    </div>
+
+    {% if token_invalido %}
+      <div class="alerta">
+        <div class="icon">🔗</div>
+        <strong>Link inválido</strong><br><br>
+        Este link de recuperação não existe ou já foi utilizado.<br>
+        Solicite um novo link na tela de login.
+      </div>
+      <a href="/login" class="voltar">← Voltar ao login</a>
+
+    {% elif token_expirado %}
+      <div class="alerta">
+        <div class="icon">⏱️</div>
+        <strong>Link expirado</strong><br><br>
+        Este link de recuperação expirou (validade de 1 hora).<br>
+        Solicite um novo link na tela de login.
+      </div>
+      <a href="/esqueci-senha" class="btn-submit" style="display:block;text-align:center;text-decoration:none;margin-top:20px;">
+        Solicitar novo link
+      </a>
+
+    {% elif sucesso %}
+      <div class="sucesso-box">
+        <div class="icon">✅</div>
+        <h2>Senha redefinida!</h2>
+        <p>Sua senha foi atualizada com sucesso.<br>Você já pode fazer login com a nova senha.</p>
+        <a href="/login" class="btn-submit" style="display:block;text-decoration:none;">
+          Ir para o login
+        </a>
+      </div>
+
+    {% else %}
+      <div class="aviso">
+        🔒 Olá, <strong>{{ nome }}</strong>! Defina sua nova senha abaixo.
+      </div>
+      {% if erro %}
+        <div class="erro">{{ erro }}</div>
+      {% endif %}
+      <form method="POST">
+        <input type="hidden" name="token" value="{{ token }}"/>
+        <label>Nova senha</label>
+        <input type="password" name="nova_senha" placeholder="Mínimo 6 caracteres" autofocus required/>
+        <label>Confirmar nova senha</label>
+        <input type="password" name="confirma_senha" placeholder="Repita a senha" required/>
+        <div class="requisitos">
+          <ul>
+            <li>Mínimo de 6 caracteres</li>
+            <li>Evite senhas simples como "123456"</li>
+          </ul>
+        </div>
+        <button type="submit" class="btn-submit">Salvar nova senha</button>
+      </form>
+      <a href="/login" class="voltar">← Voltar ao login</a>
+    {% endif %}
+  </div>
+</body>
+</html>

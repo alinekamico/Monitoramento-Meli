@@ -18,16 +18,34 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent))
 
 import yaml
-from flask import Flask, jsonify, request, send_from_directory
+import os
+from flask import Flask, jsonify, redirect, render_template, request, send_from_directory, url_for
 from flask_cors import CORS
+from flask_login import LoginManager, login_required, current_user
+from dotenv import load_dotenv
 
 from src import decisor, margem, ml_client, pdv
 from src.buybox import persistencia as buybox_persist
 
 _CONFIG_DIR = Path(__file__).parent / "config"
 
-app = Flask(__name__, static_folder=str(Path(__file__).parent))
+load_dotenv()
+app = Flask(__name__, static_folder=str(Path(__file__).parent), template_folder=str(Path(__file__).parent / "templates"))
 CORS(app)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-change-in-prod')
+
+# Flask-Login
+login_manager = LoginManager(app)
+login_manager.login_view = 'auth.login'
+login_manager.login_message = 'Por favor, faça login para acessar esta página.'
+
+from src.auth.persistencia import buscar_usuario_por_id
+@login_manager.user_loader
+def load_user(user_id):
+    return buscar_usuario_por_id(int(user_id))
+
+from src.auth.rotas import auth_bp
+app.register_blueprint(auth_bp)
 
 # ---------------------------------------------------------------------------
 # Cache em memória para campanhas (evita re-fetch a cada reload de página)
@@ -188,6 +206,7 @@ def _process_item(
 # ---------------------------------------------------------------------------
 
 @app.route("/")
+@login_required
 def index():
     return send_from_directory(str(Path(__file__).parent), "dashboard.html")
 
@@ -1128,8 +1147,16 @@ def debug_raw_campanhas(item_id: str):
 # Entrypoint
 # ---------------------------------------------------------------------------
 
+@app.route("/usuarios")
+@login_required
+def usuarios_page():
+    if not current_user.is_authenticated or current_user.perfil != 'admin':
+        return redirect(url_for('auth.login'))
+    return render_template('usuarios.html')
+
+
 if __name__ == "__main__":
     print("Painel de Campanhas ML — servidor local")
     print("Acesse: http://localhost:5000")
     print("Pressione Ctrl+C para encerrar.\n")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=5050, debug=False)
