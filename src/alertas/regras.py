@@ -117,6 +117,9 @@ def _avaliar_a1(novo: Snapshot, anterior: Snapshot) -> Optional[AlertaPendente]:
         dados={
             "preco_anterior":         anterior.preco_atual,
             "preco_atual":            novo.preco_atual,
+            "rc_atual_pct":           novo.rc_atual_pct,
+            "nossa_posicao":          novo.nossa_posicao,
+            "campanha_ativa_nome":    novo.campanha_ativa_nome,
             "quem_pegou":             quem_pegou,
             "preco_otimo_sugerido":   novo.preco_otimo_sugerido,
             "rc_no_preco_otimo":      novo.rc_no_preco_otimo,
@@ -190,6 +193,9 @@ def _avaliar_a2(novo: Snapshot, ruido_rs: float, limite_pct: float) -> Optional[
         motivo="; ".join(motivo_partes),
         dados={
             "preco_atual":            novo.preco_atual,
+            "rc_atual_pct":           novo.rc_atual_pct,
+            "nossa_posicao":          novo.nossa_posicao,
+            "campanha_ativa_nome":    novo.campanha_ativa_nome,
             "preco_1o":               novo.preco_1o,
             "preco_2o":               novo.preco_2o,
             "concorrente_1o":         primeiro,
@@ -253,6 +259,8 @@ def _avaliar_a3(
                 "concorrente_sumido":     info,
                 "nossa_posicao_atual":    novo.nossa_posicao,
                 "preco_atual":            novo.preco_atual,
+                "rc_atual_pct":           novo.rc_atual_pct,
+                "campanha_ativa_nome":    novo.campanha_ativa_nome,
                 "preco_otimo_sugerido":   novo.preco_otimo_sugerido,
                 "rc_no_preco_otimo":      novo.rc_no_preco_otimo,
                 "motivo_sugestao":        novo.motivo_sugestao,

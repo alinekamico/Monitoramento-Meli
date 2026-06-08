@@ -1,4 +1,4 @@
-dry_run: true
+dry_run: false
 rc_minimo: 60.0
 comissao_classico: 0.14
 comissao_premium: 0.19
@@ -16,9 +16,9 @@ email:
   smtp_port: 587
 buybox:
   intervalo_coleta_minutos: 60
-  cooldown_a1_horas: 6
-  cooldown_a2_horas: 2
-  cooldown_a3_horas: 4
+  cooldown_a1_horas: 0
+  cooldown_a2_horas: 0
+  cooldown_a3_horas: 0
   margem_minima_b2_pct: 20.0
   rc_oportunidade_b3_pct: 70.0
   fracao_snapshots_b2: 0.5
@@ -26,6 +26,7 @@ buybox:
   passo_abaixo_rs: 0.1
   ciclos_confirmacao_a3: 2
   hora_resumo_diario: 8
+  cooldown_c1_horas: 1
   cep_referencia: '01310100'
   fonte_preco: suggested_price
   email:

@@ -55,6 +55,55 @@ def _wrap(corpo_html: str) -> str:
     )
 
 
+def _pct(valor: Optional[float]) -> str:
+    """Formata percentual com 1 casa decimal ou '—'."""
+    if valor is None:
+        return "—"
+    return f"{valor:.1f}%"
+
+
+def _cor_rc(valor: Optional[float], minimo: float = 60.0) -> str:
+    if valor is None:
+        return "#6b7280"
+    return "#16a34a" if valor >= minimo else "#dc2626"
+
+
+def _bloco_rc(dados: dict) -> str:
+    """
+    Bloco destacado de RC atual / RC para ganhar / posição / campanha ativa.
+    Aparece em todos os alertas A1/A2/A3 logo após o preço.
+    """
+    rc_atual  = dados.get("rc_atual_pct")
+    rc_ganhar = dados.get("rc_no_preco_otimo")
+    posicao   = dados.get("nossa_posicao") or dados.get("nossa_posicao_atual")
+    campanha  = dados.get("campanha_ativa_nome")
+
+    partes: list[str] = []
+    if rc_atual is not None:
+        cor = _cor_rc(rc_atual)
+        partes.append(
+            f'<b>RC atual:</b> '
+            f'<span style="color:{cor};font-weight:700">{_pct(rc_atual)}</span>'
+        )
+    if rc_ganhar is not None:
+        partes.append(f'<b>RC p/ ganhar:</b> {_pct(rc_ganhar)}')
+    if posicao is not None:
+        partes.append(f'<b>Posição:</b> {posicao}º')
+    if campanha:
+        partes.append(f'<b>Campanha ativa:</b> {escape(str(campanha))}')
+
+    if not partes:
+        return ""
+
+    return (
+        '<p style="background:#f9fafb; border-left:3px solid #d1d5db; '
+        'padding:8px 14px; border-radius:0 4px 4px 0; margin:10px 0; '
+        'font-size:13px;">'
+        + " &nbsp;&nbsp;|&nbsp;&nbsp; ".join(partes)
+        + "</p>"
+    )
+
+
 # ============================================================
 # Alertas críticos (A1/A2/A3)
 # ============================================================
@@ -93,6 +142,7 @@ def template_a1(sku: str, item_id: str, dados: dict) -> tuple[str, str]:
         f'{_link(url)}</p>'
         f'<p><b>Produto:</b> {escape(titulo)}</p>'
         f'<p><b>Seu preço:</b> {_formatar_br(dados.get("preco_atual"))}</p>'
+        f'{_bloco_rc(dados)}'
         f'{quem_html}'
         f'{sugestao_html}'
     )
@@ -123,6 +173,7 @@ def template_a2(sku: str, item_id: str, dados: dict) -> tuple[str, str]:
         f'{_link(url)}</p>'
         f'<p><b>Produto:</b> {escape(titulo)}</p>'
         f'<p><b>Seu preço:</b> {_formatar_br(dados.get("preco_atual"))}</p>'
+        f'{_bloco_rc(dados)}'
         f'<p><b>1º:</b> {_formatar_br(dados.get("preco_1o"))} '
         f'&nbsp;|&nbsp; <b>2º:</b> {_formatar_br(dados.get("preco_2o"))}</p>'
         f'{sugestao_html}'
@@ -152,6 +203,8 @@ def template_a3(sku: str, item_id: str, dados: dict) -> tuple[str, str]:
         f'<p><b>SKU:</b> {escape(sku)} &nbsp;|&nbsp; <b>Anúncio:</b> {escape(item_id)} '
         f'{_link(url)}</p>'
         f'<p><b>Produto:</b> {escape(titulo)}</p>'
+        f'<p><b>Seu preço:</b> {_formatar_br(dados.get("preco_atual"))}</p>'
+        f'{_bloco_rc(dados)}'
         f'<p><b>Sumiu:</b> {escape(sumido.get("seller_nome") or "—")} '
         f'(estava em {sumido.get("posicao")}º @ {_formatar_br(sumido.get("preco"))})</p>'
         f'<p><b>Sua posição agora:</b> {dados.get("nossa_posicao_atual") or "—"}</p>'
@@ -267,6 +320,102 @@ def _secao_b3(itens: list[dict]) -> str:
         f'{linhas}'
         f'</table>'
     )
+
+
+def template_c1_campanhas(
+    itens: list[dict],
+    conta: str = "best_hair",
+) -> tuple[str, str]:
+    """
+    C1 — e-mail consolidado de campanhas com RC acima do mínimo disponíveis
+    para aceitar.
+
+    Cada linha mostra:
+      - Estado atual do anúncio (preço atual, RC atual, posição buybox,
+        se já participa de outra campanha)
+      - Dados da nova campanha disponível (preço, rebate, RC c/ campanha)
+    """
+    total = len(itens)
+    plural    = "s" if total > 1 else ""
+    plural_vel = "eis" if total > 1 else "el"
+    assunto = (
+        f"[C1] {total} campanha{plural} disponív{plural_vel} para aceitar"
+        f" — {conta}"
+    )
+
+    _TD  = _TD_STYLE
+    _TH  = _TH_STYLE
+    _TH_G = _TH_STYLE + "background:#dcfce7;"   # cabeçalho verde (campanha)
+    _TH_B = _TH_STYLE + "background:#eff6ff;"   # cabeçalho azul (estado atual)
+
+    def _rc_td(val: Optional[float]) -> str:
+        """Célula de RC colorida."""
+        if val is None:
+            return f'<td style="{_TD}">—</td>'
+        cor = _cor_rc(val)
+        return (
+            f'<td style="{_TD};color:{cor};font-weight:700">'
+            f'{val:.1f}%</td>'
+        )
+
+    def _campanha_td(em: bool, nome: Optional[str]) -> str:
+        if em:
+            label = escape(nome or "Sim")
+            return f'<td style="{_TD};color:#d97706;">✔ {label}</td>'
+        return f'<td style="{_TD};color:#6b7280;">Não</td>'
+
+    def _pos_td(pos: Optional[int]) -> str:
+        if pos is None:
+            return f'<td style="{_TD}">—</td>'
+        cor = "#16a34a" if pos == 1 else "#1f2937"
+        return f'<td style="{_TD};color:{cor};font-weight:{"700" if pos==1 else "400"}">{pos}º</td>'
+
+    linhas = "".join(
+        f"<tr>"
+        f'<td style="{_TD}">{escape(i["sku"])}</td>'
+        f'<td style="{_TD}">{escape(i["item_id"])}</td>'
+        f'<td style="{_TD}">{escape(i.get("campanha_nome") or "—")}</td>'
+        # — Estado atual —
+        f'<td style="{_TD}">{_formatar_br(i.get("preco_atual"))}</td>'
+        + _rc_td(i.get("rc_atual"))
+        + _pos_td(i.get("posicao_buybox"))
+        + _campanha_td(i.get("ja_em_campanha", False), i.get("campanha_ativa_nome"))
+        # — Campanha disponível —
+        + f'<td style="{_TD}">{_formatar_br(i.get("preco_campanha"))}</td>'
+        f'<td style="{_TD}">{_formatar_br(i.get("rebate"))}</td>'
+        + _rc_td(i.get("rc_campanha"))
+        + f'<td style="{_TD}">{escape(i.get("vigencia_fim") or "—")}</td>'
+        f"</tr>"
+        for i in itens
+    )
+
+    corpo = (
+        f'<h2 style="color:#16a34a;margin:0;">🏷 {total} campanha{plural} para aceitar</h2>'
+        f"<p>Anúncios com campanhas de rebate e RC acima do mínimo aguardando confirmação:</p>"
+        f'<table style="{_TABLE_STYLE}">'
+        f"<tr>"
+        # Identificação
+        f'<th style="{_TH}">SKU</th>'
+        f'<th style="{_TH}">MLB</th>'
+        f'<th style="{_TH}">Campanha</th>'
+        # Estado atual
+        f'<th style="{_TH_B}">Preço atual</th>'
+        f'<th style="{_TH_B}">RC atual</th>'
+        f'<th style="{_TH_B}">Posição BB</th>'
+        f'<th style="{_TH_B}">Já em campanha</th>'
+        # Nova campanha
+        f'<th style="{_TH_G}">Preço c/ camp.</th>'
+        f'<th style="{_TH_G}">Rebate</th>'
+        f'<th style="{_TH_G}">RC c/ camp.</th>'
+        f'<th style="{_TH_G}">Vigência até</th>'
+        f"</tr>"
+        f"{linhas}"
+        f"</table>"
+        f'<p style="margin-top:16px;font-size:12px;color:#6b7280;">'
+        f'Acesse a <a href="https://www.mercadolivre.com.br/anuncios/lista/promos"'
+        f' style="color:#2563eb;">Central de Promoções ML</a> para participar.</p>'
+    )
+    return assunto, _wrap(corpo)
 
 
 def template_resumo_diario(resumo: dict, data_referencia: datetime | None = None) -> tuple[str, str]:

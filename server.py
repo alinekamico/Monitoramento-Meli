@@ -4,7 +4,7 @@ Servidor local para o painel de campanhas.
 Uso:
   python server.py
 
-Depois abra dashboard.html no navegador (ou acesse http://localhost:5000).
+Depois abra dashboard.html no navegador (ou acesse http://localhost:5050).
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import yaml
 import os
 from flask import Flask, jsonify, redirect, render_template, request, send_from_directory, url_for
 from flask_cors import CORS
-from flask_login import LoginManager, login_required, current_user
+from flask_login import LoginManager, login_required, current_user  # mantido para o blueprint de auth
 from dotenv import load_dotenv
 
 from src import decisor, margem, ml_client, pdv
@@ -56,6 +56,11 @@ app.register_blueprint(auth_bp)
 
 _CAMPAIGN_CACHE: dict[str, dict] = {}
 _CAMPAIGN_CACHE_TTL = 10 * 60   # segundos
+
+# Controle de coleta em background — evita duas coletas simultâneas por conta.
+# Estrutura: { conta: threading.Thread }
+import threading
+_coleta_em_andamento: dict[str, threading.Thread] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +300,33 @@ def gerenciar_skus():
     _CAMPAIGN_CACHE.clear()
 
     return jsonify({"ok": True, "atualizados": len(items)})
+
+
+@app.route("/api/skus/<sku_id>", methods=["DELETE"])
+@login_required
+def deletar_sku(sku_id: str):
+    """Remove permanentemente um SKU de config/skus.yaml."""
+    sku_id = sku_id.upper()
+    skus_path = _CONFIG_DIR / "skus.yaml"
+
+    with open(skus_path, encoding="utf-8") as f:
+        yaml_doc = yaml.safe_load(f) or {}
+    skus_yaml = yaml_doc.get("skus", {})
+
+    if sku_id not in skus_yaml:
+        return jsonify({"erro": f"SKU {sku_id} não encontrado"}), 404
+
+    del skus_yaml[sku_id]
+    yaml_doc["skus"] = skus_yaml
+
+    with open(skus_path, "w", encoding="utf-8") as f:
+        yaml.dump(yaml_doc, f, allow_unicode=True,
+                  default_flow_style=False, sort_keys=True)
+
+    # Invalida cache (SKU removido → resumo muda)
+    _CAMPAIGN_CACHE.clear()
+
+    return jsonify({"ok": True, "removido": sku_id})
 
 
 @app.route("/api/rc-minimo", methods=["GET", "PUT"])
@@ -889,7 +921,11 @@ def buybox_sku_vendas(sku: str):
     periodo = (request.args.get("periodo") or "7d").lower()
     horas   = {"24h": 24, "7d": 24 * 7, "30d": 24 * 30}.get(periodo, 24 * 7)
 
-    ate_dt   = _dt.now(timezone.utc)
+    # Usa fuso horário de Brasília (UTC-3) para formatar os timestamps
+    # corretamente na API do ML. Usar timezone.utc com sufixo -03:00 causaria
+    # janela 3h deslocada (UTC 18h formatado como -03:00 = 21h UTC para o ML).
+    BRT      = timezone(_td(hours=-3))
+    ate_dt   = _dt.now(BRT)
     desde_dt = ate_dt - _td(hours=horas)
 
     historico = buybox_persist.snapshots_periodo(sku, item_id=item_id, horas=horas,
@@ -909,9 +945,21 @@ def buybox_sku_vendas(sku: str):
     )
 
     def _ts(iso: str) -> _dt:
+        """
+        Converte timestamp ISO (com ou sem fuso) para datetime UTC naive.
+
+        Os snapshots são armazenados como UTC naive no MySQL. Os pedidos do
+        ML chegam com offset BRT (-03:00), então "2026-06-08T12:00:00-03:00"
+        precisa ser normalizado para UTC (15:00) antes da comparação com
+        os timestamps dos snapshots. Sem essa normalização, os pedidos das
+        janelas horárias nunca coincidiam e a contagem ficava sempre zero.
+        """
         try:
             d = _dt.fromisoformat(iso.replace("Z", "+00:00"))
-            return d.replace(tzinfo=None)
+            if d.tzinfo is not None:
+                # Converte para UTC e remove o fuso — mesma base dos snapshots
+                return d.astimezone(timezone.utc).replace(tzinfo=None)
+            return d  # já naive, assume UTC (compatibilidade)
         except Exception:
             return _dt.min
 
@@ -1047,18 +1095,40 @@ def buybox_skus_configurados():
 @app.route("/api/buybox/forcar-coleta", methods=["POST"])
 def buybox_forcar_coleta():
     """
-    Dispara uma coleta imediata. Útil para operação ("acabei de mudar
-    preço, atualize o painel").
+    Dispara coleta imediata em background e retorna imediatamente.
+
+    Retorna 202 (accepted) ao iniciar ou 409 (conflict) se já houver uma
+    coleta em andamento para a mesma conta.
 
     Payload opcional (JSON): {"skus": ["WLK004", "WL008"]}
     """
     from src.buybox import coletor as _coletor
 
     conta = _conta_da_request()
-    body  = request.get_json(silent=True) or {}
-    skus  = body.get("skus") or None
-    stats = _coletor.coletar(skus_filtro=skus, conta=conta)
-    return jsonify(stats)
+
+    # Bloqueia dupla coleta simultânea para a mesma conta
+    t = _coleta_em_andamento.get(conta)
+    if t is not None and t.is_alive():
+        return jsonify({"status": "em_andamento",
+                        "mensagem": "Coleta já em andamento para esta conta."}), 409
+
+    body = request.get_json(silent=True) or {}
+    skus = body.get("skus") or None
+
+    def _rodar():
+        try:
+            _coletor.coletar(skus_filtro=skus, conta=conta)
+        finally:
+            _coleta_em_andamento.pop(conta, None)
+
+    thread = threading.Thread(target=_rodar, daemon=True, name=f"coleta-{conta}")
+    _coleta_em_andamento[conta] = thread
+    thread.start()
+
+    n_skus = len(skus) if skus else 23
+    return jsonify({"status": "iniciada",
+                    "mensagem": f"Coleta de {n_skus} SKU(s) iniciada em background.",
+                    "conta": conta}), 202
 
 
 # ---------------------------------------------------------------------------

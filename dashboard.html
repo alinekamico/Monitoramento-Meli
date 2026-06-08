@@ -1339,10 +1339,10 @@
   }
   .skus-panel-header button:hover { background: var(--border); color: var(--text); }
 
-  /* Grid de colunas — 4 colunas fixas, sem tabela */
+  /* Grid de colunas — 5 colunas fixas, sem tabela */
   .skus-col-grid {
     display: grid;
-    grid-template-columns: 88px 1fr 1fr 148px;
+    grid-template-columns: 88px 1fr 1fr 148px 36px;
     align-items: center;
   }
   /* Cabeçalho de colunas — fora do scroll, sempre visível */
@@ -1437,6 +1437,38 @@
   /* Célula de input com padding lateral */
   .sku-cell { padding: 0 5px; }
 
+  /* Botão remover SKU */
+  .sku-del-btn {
+    width: 28px; height: 28px;
+    background: rgba(239,68,68,.15);
+    border: 1px solid transparent;
+    color: var(--red);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s, border-color .15s;
+  }
+  .sku-del-btn:hover { background: rgba(239,68,68,.3); border-color: var(--red); }
+
+  /* Formulário de novo SKU */
+  .sku-novo-form {
+    padding: 12px 22px;
+    border-top: 2px dashed var(--border);
+    background: rgba(250,204,21,.04);
+  }
+  .sku-novo-form-titulo {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .sku-novo-form .skus-col-grid {
+    grid-template-columns: 88px 1fr 1fr 148px auto;
+  }
+
   /* Rodapé */
   .skus-panel-footer {
     display: flex;
@@ -1489,12 +1521,43 @@
         <span>Custo (R$)</span>
         <span>Peso (kg)</span>
         <span>Tipo de Anúncio</span>
+        <span></span>
       </div>
     </div>
 
     <!-- Linhas roláveis -->
     <div class="skus-scroll" id="skus-tbody">
       <div style="text-align:center;padding:32px;color:var(--muted);">Carregando…</div>
+    </div>
+
+    <!-- Formulário de novo SKU -->
+    <div class="sku-novo-form" id="sku-novo-form">
+      <div class="sku-novo-form-titulo">+ Adicionar novo SKU</div>
+      <div class="skus-col-grid" style="gap:6px">
+        <div class="sku-cell" style="padding-left:0">
+          <input type="text" id="novo-sku-codigo" class="sku-input" placeholder="Ex: WL099"
+                 style="text-transform:uppercase" maxlength="20" />
+        </div>
+        <div class="sku-cell">
+          <input type="number" id="novo-sku-custo" class="sku-input" placeholder="0.00"
+                 min="0" step="0.01" />
+        </div>
+        <div class="sku-cell">
+          <input type="number" id="novo-sku-peso" class="sku-input" placeholder="0.000"
+                 min="0" step="0.001" />
+        </div>
+        <div class="sku-cell">
+          <select id="novo-sku-tipo" class="sku-select">
+            <option value="Clássico">Clássico</option>
+            <option value="Premium">Premium</option>
+          </select>
+        </div>
+        <div class="sku-cell" style="padding-right:0">
+          <button class="sku-del-btn" style="background:rgba(34,197,94,.15);color:var(--green);border:none;font-size:18px;width:32px;height:32px"
+                  onclick="adicionarNovoSku()" title="Adicionar SKU">+</button>
+        </div>
+      </div>
+      <div id="novo-sku-erro" style="font-size:11px;color:var(--red);margin-top:6px;display:none"></div>
     </div>
 
     <!-- Rodapé -->
@@ -1658,6 +1721,9 @@
           ${tipoOpts}
         </select>
       </div>
+      <div class="sku-cell" style="display:flex;justify-content:center;padding:0 2px">
+        <button class="sku-del-btn" onclick="removerSku('${s.sku}')" title="Remover ${s.sku}">✕</button>
+      </div>
     </div>`;
   }
 
@@ -1706,6 +1772,88 @@
       status.style.color = 'var(--red)';
     } finally {
       btn.disabled = false;
+    }
+  }
+
+  async function removerSku(sku) {
+    if (!confirm(`Remover permanentemente o SKU "${sku}" do monitoramento?\n\nEsta ação não pode ser desfeita.`)) return;
+    const status = document.getElementById('skus-status');
+    try {
+      const res = await fetch(`${_BASE}/api/skus/${encodeURIComponent(sku)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        status.textContent = `Erro: ${d.erro || 'Falha ao remover'}`;
+        status.style.color = 'var(--red)';
+        return;
+      }
+      // Remove a linha do DOM imediatamente (sem novo fetch)
+      const row = document.querySelector(`#skus-tbody .sku-row[data-sku="${sku}"]`);
+      if (row) row.remove();
+      _skusOriginais = _skusOriginais.filter(s => s.sku !== sku);
+      status.textContent = `SKU ${sku} removido.`;
+      status.style.color = 'var(--green)';
+      setTimeout(() => { if (status.textContent.includes('removido')) status.textContent = ''; }, 3000);
+    } catch (err) {
+      status.textContent = 'Erro: ' + err.message;
+      status.style.color = 'var(--red)';
+    }
+  }
+
+  async function adicionarNovoSku() {
+    const erroEl  = document.getElementById('novo-sku-erro');
+    const codigoEl = document.getElementById('novo-sku-codigo');
+    const custoEl  = document.getElementById('novo-sku-custo');
+    const pesoEl   = document.getElementById('novo-sku-peso');
+    const tipoEl   = document.getElementById('novo-sku-tipo');
+    erroEl.style.display = 'none';
+
+    const sku   = (codigoEl.value || '').trim().toUpperCase();
+    const custo = parseFloat(custoEl.value);
+    const peso  = parseFloat(pesoEl.value);
+    const tipo  = tipoEl.value;
+
+    if (!sku)            { erroEl.textContent = 'Informe o código do SKU.';     erroEl.style.display = ''; return; }
+    if (isNaN(custo) || custo < 0) { erroEl.textContent = 'Custo inválido.';   erroEl.style.display = ''; return; }
+    if (isNaN(peso)  || peso  < 0) { erroEl.textContent = 'Peso inválido.';    erroEl.style.display = ''; return; }
+
+    // Verifica se já existe
+    if (_skusOriginais.some(s => s.sku === sku)) {
+      erroEl.textContent = `SKU ${sku} já existe. Edite-o na lista acima.`;
+      erroEl.style.display = '';
+      return;
+    }
+
+    const status = document.getElementById('skus-status');
+    status.textContent = `Adicionando ${sku}…`;
+    status.style.color = 'var(--muted)';
+
+    try {
+      const res = await fetch(`${_BASE}/api/skus`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
+        body: JSON.stringify([{ sku, custo, peso, tipo_anuncio: tipo }]),
+      });
+      const d = await res.json();
+      if (!res.ok) { throw new Error(d.erro || `HTTP ${res.status}`); }
+
+      // Limpa campos
+      codigoEl.value = '';
+      custoEl.value  = '';
+      pesoEl.value   = '';
+      tipoEl.value   = 'Clássico';
+
+      // Recarrega a lista completa para refletir o novo SKU
+      await _carregarSkus();
+      status.textContent = `SKU ${sku} adicionado com sucesso.`;
+      status.style.color = 'var(--green)';
+      setTimeout(() => { if (status.textContent.includes('adicionado')) status.textContent = ''; }, 3000);
+    } catch (err) {
+      status.textContent = 'Erro: ' + err.message;
+      status.style.color = 'var(--red)';
     }
   }
 
@@ -2379,7 +2527,6 @@
       'running', true,
     );
 
-    const inicio = Date.now();
     try {
       const body = todos ? '{}' : JSON.stringify({skus});
       const res  = await fetch(API_BX_COLETAR(), {
@@ -2387,30 +2534,34 @@
         headers: {'Content-Type': 'application/json'},
         body,
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const stats = await res.json();
+      const data = await res.json();
 
-      const segundos = ((Date.now() - inicio) / 1000).toFixed(1);
-      const erros = stats.erros || 0;
-      const variante = erros > 0 ? 'err' : 'ok';
+      if (res.status === 409) {
+        // Já tem coleta em andamento
+        showToast(`<strong>Coleta em andamento</strong><br>${data.mensagem}`, 'err');
+        return;
+      }
+      if (!res.ok) throw new Error(data.mensagem || `HTTP ${res.status}`);
 
+      // 202: coleta iniciada em background — atualiza painel após ~5 min
       showToast(
-        `<strong>Coleta concluída em ${segundos}s</strong><br>` +
-        `${stats.skus_processados ?? 0} SKU(s) processado(s) | ` +
-        `${stats.snapshots_salvos ?? 0} snapshot(s) salvo(s) | ` +
-        `${stats.snapshots_ignorados ?? 0} duplicado(s) | ` +
-        `${erros} erro(s)`,
-        variante,
+        `<strong>Coleta iniciada!</strong><br>` +
+        `${data.mensagem}<br>` +
+        `<small style="color:var(--muted)">O painel será atualizado automaticamente ao fim.</small>`,
+        'ok',
       );
-
-      // Invalida o cache do dropdown (alguns SKUs podem ter mudado de
-      // status "NOVO" para já coletado)
       skusConfigurados = [];
-      // Recarrega a lista para refletir os snapshots novos
-      await loadBuyboxData();
+
+      // Aguarda ~5 min e recarrega (estimativa conservadora para 23 SKUs)
+      const tempoEspera = skus.length <= 3 ? 45000 : skus.length <= 10 ? 120000 : 320000;
+      setTimeout(async () => {
+        await loadBuyboxData();
+        showToast('Painel atualizado com os novos snapshots.', 'ok');
+      }, tempoEspera);
+
     } catch (err) {
       showToast(
-        `<strong>Falha na coleta</strong><br>` +
+        `<strong>Falha ao iniciar coleta</strong><br>` +
         `${err.message}<br>` +
         `<small style="color:var(--muted)">Verifique se o server.py está rodando e o .env preenchido.</small>`,
         'err',
@@ -2813,7 +2964,7 @@
     if (!wrap) return;
     wrap.innerHTML = '<div class="empty-state" style="padding:14px">Carregando dados de vendas…</div>';
     try {
-      const url = `${API_BX_VENDAS(sku, itemId)}&periodo=${periodo}`;
+      const url = API_BX_VENDAS(sku, itemId, periodo);
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
@@ -3213,7 +3364,10 @@
 
   function renderBxDetail(detail) {
     const s = detail.snapshot;
-    const concorrentes = detail.concorrentes || [];
+    // Garante ordem por posição (1 → 5) independente da ordem vinda da API
+    const concorrentes = [...(detail.concorrentes || [])].sort(
+      (a, b) => (a.posicao ?? 99) - (b.posicao ?? 99)
+    );
     const historico = detail.historico_24h || [];
     const serieConcorrentes = detail.serie_concorrentes || [];
     const breakdownAtual = detail.breakdown_atual;
@@ -3358,33 +3512,12 @@
         </div>
       </div>
 
-      <h3>Histórico de posição e preços
-        <span style="font-size:11px;color:var(--muted);font-weight:normal;margin-left:8px">
-          (filtre o período aplicado a ambos os gráficos abaixo)
-        </span>
+      <h3>Histórico de posição
+        <span style="font-size:11px;color:var(--muted);font-weight:normal;margin-left:8px">últimas 24h</span>
       </h3>
-      <div class="periodo-bar">
-        <button class="periodo-btn active" data-periodo="24h" onclick="aplicarPeriodoModal('24h', this)">24 horas</button>
-        <button class="periodo-btn" data-periodo="7d"  onclick="aplicarPeriodoModal('7d', this)">7 dias</button>
-        <button class="periodo-btn" data-periodo="30d" onclick="aplicarPeriodoModal('30d', this)">30 dias</button>
-        <button class="periodo-btn" data-periodo="custom" onclick="aplicarPeriodoModal('custom', this)">Personalizado…</button>
-        <div class="periodo-custom" id="periodo-custom-inputs">
-          <input type="date" id="periodo-desde" title="Data inicial">
-          <span style="color:var(--muted);font-size:11px">→</span>
-          <input type="date" id="periodo-ate" title="Data final">
-          <button onclick="aplicarPeriodoCustom()">Aplicar</button>
-        </div>
-      </div>
-
-      <h4 style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 6px">
-        Sua posição
-      </h4>
       <div id="grafico-posicao-wrap">${chart}</div>
 
-      <h4 style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px">
-        Preço &amp; Vendas
-      </h4>
-      <div id="vendas-resumo-wrap"></div>
+      <h3 style="margin-top:20px">Preço &amp; Vendas</h3>
       <div class="vendas-selector">
         <span style="font-size:11px;color:var(--muted);white-space:nowrap">Visualização:</span>
         <select id="vendas-modo-select" onchange="_setVendasModo(this.value)">
@@ -3392,6 +3525,7 @@
           <option value="concorrentes">Top 5 concorrentes</option>
         </select>
       </div>
+      <div id="vendas-resumo-wrap"></div>
       <div id="vendas-chart-wrap" class="price-chart-wrap">
         <div class="empty-state" style="padding:14px">Carregando vendas…</div>
       </div>
@@ -3485,7 +3619,7 @@
         ? `<button class="tag tag-aceitar tag-nav-btn" title="${r.motivo ? escapeHtml(r.motivo) + ' — ' : ''}Abrir Central de Promoções ML" onclick="irParaPromocoesMl('${_mid}')">ACEITAR ↗</button>`
         : (r.decisao === 'RECUSAR'
             ? `<button class="tag tag-recusar tag-nav-btn" title="${r.motivo ? escapeHtml(r.motivo) + ' — ' : ''}Abrir Central de Promoções ML" onclick="irParaPromocoesMl('${_mid}')">RECUSAR ↗</button>`
-            : `<span style="color:var(--muted);font-size:11px">participando</span>`);
+            : `<button class="tag tag-ativa tag-nav-btn" title="Campanha ativa — Abrir Central de Promoções ML" onclick="irParaPromocoesMl('${_mid}')">participando ↗</button>`);
       const rcCls = corPorRC(r.rc_pct);
       const vigClass = vigenciaExpiraEmBreve(r.finish_date) ? 'color:var(--accent);font-weight:600' : 'color:var(--muted)';
       html += `<tr>

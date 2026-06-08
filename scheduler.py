@@ -224,6 +224,33 @@ def executar_ciclo(
                             "trace": traceback.format_exc(limit=5),
                             "ts": datetime.now().isoformat()})
 
+        # ---- 2b) Campanhas C1 — rebate com RC ≥ mínimo ----
+        if avaliar_alertas:
+            try:
+                c1 = avaliador.avaliar_campanhas_aceitar(cfg=cfg, conta=conta)
+                conta_stats["campanhas_c1"] = c1
+                if c1.get("enviado"):
+                    _log.info(
+                        "C1 enviado [%s]: %d campanha(s) para aceitar",
+                        conta, c1["campanhas_aceitar"],
+                    )
+                elif c1.get("suprimido_cooldown"):
+                    _log.debug("C1 [%s] em cooldown — pulando", conta)
+                elif c1.get("campanhas_aceitar", 0) == 0:
+                    _log.debug("C1 [%s] sem campanhas ACEITAR neste ciclo", conta)
+                else:
+                    _log.warning(
+                        "C1 [%s] não enviado — motivo: %s",
+                        conta, c1.get("motivo_supressao"),
+                    )
+            except Exception as exc:
+                msg = f"campanhas_c1 [{conta}]: {exc.__class__.__name__}: {exc}"
+                _log.exception("falha em avaliar_campanhas_aceitar para conta %s", conta)
+                stats["erros"].append(msg)
+                _log_jsonl({"evento": "erro_campanhas_c1", "conta": conta, "erro": msg,
+                            "trace": traceback.format_exc(limit=5),
+                            "ts": datetime.now().isoformat()})
+
         # ---- 3) Resumo diário (por conta) ----
         deve_resumo = avaliar_alertas and (
             forcar_resumo or _eh_hora_resumo(hora_resumo, conta)
@@ -284,6 +311,11 @@ def loop_continuo(cfg: dict, avaliar_alertas: bool,
                 "ts": datetime.now().isoformat()})
 
     while not _sair:
+        # Recarrega settings e contas a cada ciclo para pegar mudanças
+        # feitas pelo dashboard (RC mínimo, nova conta, etc.) sem reiniciar.
+        cfg    = _carregar_settings()
+        contas = _carregar_contas()
+
         stats = executar_ciclo(cfg, avaliar_alertas=avaliar_alertas,
                                contas=contas)
         _resumir_ciclo(stats)
@@ -296,11 +328,15 @@ def loop_continuo(cfg: dict, avaliar_alertas: bool,
         _log.info("proximo ciclo em %.0fs (aprox. %s)", sleep_s,
                   prox.strftime("%H:%M:%S"))
 
-        # Sleep em chunks curtos para responder rapidamente ao Ctrl+C
-        restante = sleep_s
-        while restante > 0 and not _sair:
+        # Sleep em chunks curtos para responder rapidamente ao Ctrl+C.
+        # Recomputa `restante` a partir do datetime-alvo para evitar
+        # acúmulo de erro de float após horas de execução.
+        alvo = datetime.now() + timedelta(seconds=sleep_s)
+        while not _sair:
+            restante = (alvo - datetime.now()).total_seconds()
+            if restante <= 0:
+                break
             time.sleep(min(restante, 1.0))
-            restante -= 1.0
 
     _log.info("scheduler encerrado")
     _log_jsonl({"evento": "scheduler_fim", "ts": datetime.now().isoformat()})

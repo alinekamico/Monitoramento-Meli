@@ -26,6 +26,7 @@ from .persistencia import (
     buscar_usuario_por_email,
     buscar_usuario_por_id,
     criar_usuario,
+    deletar_usuario,
     listar_usuarios,
     registrar_acesso,
     salvar_reset_token,
@@ -296,6 +297,19 @@ def desativar(uid: int):
     if not ok:
         return jsonify({"erro": "usuário não encontrado"}), 404
     return jsonify({"mensagem": "usuário desativado"})
+
+
+@auth_bp.route("/api/usuarios/<int:uid>/remover", methods=["DELETE"])
+@login_required
+@requer_perfil(PERFIL_ADMIN)
+def remover(uid: int):
+    """Remove permanentemente o usuário. Não é possível remover a si mesmo."""
+    if uid == current_user.id:
+        return jsonify({"erro": "você não pode remover sua própria conta"}), 400
+    ok = deletar_usuario(uid)
+    if not ok:
+        return jsonify({"erro": "usuário não encontrado"}), 404
+    return jsonify({"mensagem": "usuário removido"})
 
 
 @auth_bp.route("/api/auth/me")

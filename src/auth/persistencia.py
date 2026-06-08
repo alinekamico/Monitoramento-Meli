@@ -15,11 +15,12 @@ from .modelos import AuthBase, Usuario
 load_dotenv()
 
 def _auth_engine():
-    host     = os.environ.get('DB_HOST', 'localhost')
-    port     = os.environ.get('DB_PORT', '3306')
-    user     = os.environ.get('DB_USER', 'root')
-    password = os.environ.get('DB_PASSWORD', '')
-    db_name  = os.environ.get('DB_NAME', 'buybox')
+    # Usa as mesmas variáveis MYSQL_* do restante do projeto
+    host     = os.environ.get('MYSQL_HOST', 'localhost')
+    port     = os.environ.get('MYSQL_PORT', '3306')
+    user     = os.environ.get('MYSQL_USER', 'root')
+    password = os.environ.get('MYSQL_PASSWORD', '')
+    db_name  = os.environ.get('MYSQL_AUTH_DB', 'buybox_sistema')
     url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{db_name}?charset=utf8mb4"
     return create_engine(url, future=True, pool_recycle=3600, pool_pre_ping=True)
 
@@ -152,3 +153,13 @@ def limpar_reset_token(usuario_id: int) -> None:
         if u:
             u.reset_token = None
             u.reset_token_expiry = None
+
+
+def deletar_usuario(usuario_id: int) -> bool:
+    """Remove permanentemente o usuário do banco. Retorna False se não encontrado."""
+    with sessao() as s:
+        u = s.get(Usuario, usuario_id)
+        if not u:
+            return False
+        s.delete(u)
+    return True

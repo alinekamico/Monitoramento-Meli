@@ -64,10 +64,19 @@ def main() -> None:
                 print(f"      mas o SMTP do Gmail aceita SEM espaços")
 
     print()
-    print("Outras variáveis ML (não relacionadas, só pra confirmar que o .env tá sendo lido):")
-    for nome in ["ML_APP_ID", "ML_ACCESS_TOKEN", "ML_SELLER_ID"]:
-        valor = os.getenv(nome, "")
-        print(f"  {nome:20s} = {_mascarar(valor)}")
+    print("Variáveis ML por conta (confirma que o .env está sendo lido):")
+    contas_vars = [
+        ("best_hair",  "ML_APP_ID_BESTHAIR",       "ML_ACCESS_TOKEN_BESTHAIR",  "ML_SELLER_ID_BESTHAIR"),
+        ("hair_pro",   "ML_APP_ID_HAIRPRO",         "ML_ACCESS_TOKEN_HAIRPRO",   "ML_SELLER_ID_HAIRPRO"),
+    ]
+    for conta, var_app, var_token, var_seller in contas_vars:
+        print(f"\n  [{conta}]")
+        for nome in [var_app, var_token, var_seller]:
+            valor = os.getenv(nome, "")
+            linha = f"    {nome:30s} = {_mascarar(valor)}"
+            print(linha)
+            if not valor:
+                print(f"      ⚠ Não encontrada — verifique se o nome está correto no .env")
 
 
 if __name__ == "__main__":

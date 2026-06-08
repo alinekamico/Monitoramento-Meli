@@ -3,6 +3,7 @@ python-dotenv>=1.0.0
 pyyaml>=6.0.1
 flask>=3.0.0
 flask-cors>=4.0.0
+flask-login>=0.6.3
 
 # MVP Buybox — persistência via ORM.
 # SQLAlchemy 2.x abstrai queries; PyMySQL é o driver MySQL puro-Python.
