@@ -87,6 +87,8 @@ def _criar_par_snapshots_perda_buybox(sku="WLK004", item_id="MLB100"):
     ts2 = datetime.now(timezone.utc).replace(microsecond=0)
     ts1 = ts2 - timedelta(hours=1)
 
+    # rebate_pct > 0 simula item participando de campanha de rebate ativa —
+    # condição necessária para alertas críticos dispararem e-mail.
     persistencia.salvar_snapshot(SnapshotDom(
         sku=sku, item_id=item_id, coletado_em=ts1,
         preco_atual=300.0, nossa_posicao=1, tem_buybox=True,
@@ -94,6 +96,7 @@ def _criar_par_snapshots_perda_buybox(sku="WLK004", item_id="MLB100"):
         tipo_anuncio="Clássico", preco_1o=300.0, preco_2o=320.0,
         qtd_concorrentes=2, margem_atual_pct=25.0, rc_atual_pct=55.0,
         visivel_no_catalogo=True,
+        rebate_pct=10.0, campanha_ativa_id="CAMP-1", campanha_ativa_nome="Deal",
         concorrentes=[
             ConcorrenteDom(posicao=1, seller_id="ME", seller_nome="Nós",
                            preco=300.0, e_nos=True),
@@ -110,6 +113,7 @@ def _criar_par_snapshots_perda_buybox(sku="WLK004", item_id="MLB100"):
         preco_otimo_sugerido=294.9, rc_no_preco_otimo=51.0,
         motivo_sugestao="Retomar buybox",
         visivel_no_catalogo=True, titulo="Kit Wella",
+        rebate_pct=10.0, campanha_ativa_id="CAMP-1", campanha_ativa_nome="Deal",
         concorrentes=[
             ConcorrenteDom(posicao=1, seller_id="222", seller_nome="Concorrente",
                            preco=295.0),

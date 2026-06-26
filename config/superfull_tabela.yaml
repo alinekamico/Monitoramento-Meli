@@ -1,0 +1,24 @@
+# ============================================================
+# Tabela de frete Super Full — Mercado Livre
+# ============================================================
+# Fonte: https://www.mercadolivre.com.br/ajuda/49972
+#
+# Frete cobrado pelo ML no programa Super Full.
+# Insumo: R$ 0,00 (embalagem fornecida pelo ML).
+# ============================================================
+
+# Faixas de preço (limite inferior, em R$)
+preco_breaks: [0, 19, 29, 49, 79, 99, 199]
+
+# Faixas de peso (limite inferior, em kg)
+peso_breaks: [0.0, 0.3, 0.5, 1.0, 2.0, 3.0, 4.0]
+
+# Tabela: cada linha = peso_break, cada coluna = preco_break
+tabela:
+  - [1.25, 1.50, 2.00, 3.00, 4.00,  6.00, 20.95]  # até 0.3 kg
+  - [1.25, 1.50, 2.00, 3.00, 4.00,  6.00, 22.55]  # 0.3 kg
+  - [1.25, 1.50, 2.00, 3.00, 4.00,  6.00, 23.65]  # 0.5 kg
+  - [1.75, 2.00, 2.50, 3.50, 4.50,  6.50, 24.65]  # 1.0 kg
+  - [2.00, 2.50, 3.00, 4.00, 5.00,  7.00, 26.25]  # 2.0 kg
+  - [2.00, 2.50, 3.00, 4.00, 5.00,  7.00, 28.35]  # 3.0 kg
+  - [2.50, 3.50, 4.00, 5.00, 6.00,  7.50, 30.75]  # 4.0 kg

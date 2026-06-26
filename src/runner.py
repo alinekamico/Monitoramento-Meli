@@ -99,7 +99,7 @@ def _process_item(
 ) -> None:
     item_id      = item.get("id", "")
     listing_id   = item.get("listing_type_id", "")
-    tipo_anuncio = "Premium" if "gold_pro" in listing_id else sku_data["tipo_anuncio"]
+    tipo_anuncio = "Premium" if listing_id in ("gold_pro", "gold_premium") else sku_data["tipo_anuncio"]
     is_full      = item.get("shipping", {}).get("logistic_type") == "fulfillment"
     item_cfg     = {**cfg, "insumo_fixo": 0.0} if is_full else cfg
 
@@ -120,7 +120,7 @@ def _process_item(
             notificador.campanha_ativa(sku, item_id, campanha, resultado_margem, is_full, has_stock)
 
         # Campanhas candidatas com rebate do ML
-        candidatas = [c for c in campaigns["disponiveis"] if c.get("rebate_valor", 0) > 0]
+        candidatas = [c for c in campaigns["disponiveis"] if c.get("meli_percentage", 0) > 0]
 
         if not campaigns["ativas"] and not campaigns["disponiveis"]:
             notificador.sem_campanhas(sku, item_id, has_stock)
@@ -136,7 +136,7 @@ def _process_item(
             if campanha.get("type") == "PRICE_MATCHING":
                 preco_sugerido = campanha.get("price") or 0.0
             else:
-                preco_sugerido = campanha.get("suggested_price") or campanha.get("price") or 0.0
+                preco_sugerido = campanha.get("suggested_price") or campanha.get("min_price") or campanha.get("price") or 0.0
             resultado_margem = margem.calcular_margem(
                 preco_campanha=preco_sugerido,
                 custo=sku_data["custo"],

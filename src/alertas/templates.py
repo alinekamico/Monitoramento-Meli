@@ -370,6 +370,12 @@ def template_c1_campanhas(
         cor = "#16a34a" if pos == 1 else "#1f2937"
         return f'<td style="{_TD};color:{cor};font-weight:{"700" if pos==1 else "400"}">{pos}º</td>'
 
+    def _estoque_td(val: Optional[int]) -> str:
+        if val is None:
+            return f'<td style="{_TD}">—</td>'
+        cor = "#dc2626" if val == 0 else "#1f2937"
+        return f'<td style="{_TD};color:{cor};font-weight:{"700" if val==0 else "400"}">{val}</td>'
+
     linhas = "".join(
         f"<tr>"
         f'<td style="{_TD}">{escape(i["sku"])}</td>'
@@ -379,6 +385,7 @@ def template_c1_campanhas(
         f'<td style="{_TD}">{_formatar_br(i.get("preco_atual"))}</td>'
         + _rc_td(i.get("rc_atual"))
         + _pos_td(i.get("posicao_buybox"))
+        + _estoque_td(i.get("estoque"))
         + _campanha_td(i.get("ja_em_campanha", False), i.get("campanha_ativa_nome"))
         # — Campanha disponível —
         + f'<td style="{_TD}">{_formatar_br(i.get("preco_campanha"))}</td>'
@@ -402,6 +409,7 @@ def template_c1_campanhas(
         f'<th style="{_TH_B}">Preço atual</th>'
         f'<th style="{_TH_B}">RC atual</th>'
         f'<th style="{_TH_B}">Posição BB</th>'
+        f'<th style="{_TH_B}">Estoque</th>'
         f'<th style="{_TH_B}">Já em campanha</th>'
         # Nova campanha
         f'<th style="{_TH_G}">Preço c/ camp.</th>'

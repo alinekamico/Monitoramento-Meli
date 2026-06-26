@@ -15,6 +15,7 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import sys
 import time
@@ -155,7 +156,7 @@ def _processar_item(
         return None
 
     listing_id = item_detail.get("listing_type_id", "") or ""
-    tipo_anuncio = "Premium" if "gold_pro" in listing_id else sku_data["tipo_anuncio"]
+    tipo_anuncio = "Premium" if listing_id in ("gold_pro", "gold_premium") else sku_data["tipo_anuncio"]
     is_full = (item_detail.get("shipping") or {}).get("logistic_type") == "fulfillment"
 
     cfg_buybox = settings.get("buybox", {}) or {}
@@ -292,42 +293,71 @@ def coletar(skus_filtro: Optional[Iterable[str]] = None,
     stats = {"skus_processados": 0, "snapshots_salvos": 0,
              "snapshots_ignorados": 0, "erros": 0}
 
-    for sku, sku_data in skus.items():
+    # ---- Função por SKU (executada em paralelo) ----
+    def _coletar_sku(sku: str, sku_data: dict) -> list[SnapshotDom]:
+        """Resolve MLBs, busca detalhes e processa cada item do SKU."""
         try:
             item_ids = ml_client.get_item_ids_by_sku(seller_id, sku, conta=conta)
         except Exception as exc:
-            stats["erros"] += 1
-            _log_jsonl({"evento": "erro_resolucao_mlbs",
-                        "sku": sku, "erro": str(exc),
-                        "ts": datetime.now().isoformat()})
-            _print(f"  ✗ {sku}: falha ao resolver MLBs — {exc}")
-            continue
+            _log_jsonl({"evento": "erro_resolucao_mlbs", "sku": sku,
+                        "erro": str(exc), "ts": datetime.now().isoformat()})
+            raise RuntimeError(f"falha ao resolver MLBs — {exc}") from exc
 
         if not item_ids:
-            _print(f"  – {sku}: sem MLBs")
-            continue
+            return []
 
         items = ml_client.get_items_details(item_ids, conta=conta)
-        time.sleep(0.15)
-
+        doms: list[SnapshotDom] = []
         for item in items:
-            item_id = item.get("id", "")
             try:
                 dom = _processar_item(sku, sku_data, item, seller_id, settings, conta=conta)
-                if dom is None:
-                    continue
+                if dom is not None:
+                    doms.append(dom)
+            except Exception as exc:
+                item_id = item.get("id", "")
+                _log_jsonl({"evento": "erro_processamento", "sku": sku,
+                            "item_id": item_id, "erro": str(exc),
+                            "trace": traceback.format_exc(limit=3),
+                            "ts": datetime.now().isoformat()})
+                _print(f"  ✗ {sku} [{item_id}]: ERRO — {exc}")
+        return doms
+
+    # ---- Execução paralela por SKU (5 workers) ----
+    n_workers = min(5, len(skus))
+    futuros: dict[concurrent.futures.Future, str] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers,
+                                               thread_name_prefix="coletor") as pool:
+        for sku, sku_data in skus.items():
+            futuros[pool.submit(_coletar_sku, sku, sku_data)] = sku
+
+        for fut in concurrent.futures.as_completed(futuros):
+            sku = futuros[fut]
+            try:
+                doms = fut.result()
+            except Exception as exc:
+                stats["erros"] += 1
+                _print(f"  ✗ {sku}: {exc}")
+                continue
+
+            if not doms:
+                _print(f"  – {sku}: sem MLBs")
+                continue
+
+            stats["skus_processados"] += 1
+            for dom in doms:
+                item_id = dom.item_id
                 snap_id = persistencia.salvar_snapshot(dom, conta=conta)
                 if snap_id is None:
                     stats["snapshots_ignorados"] += 1
                     _print(f"  ○ {sku} [{item_id}]: snapshot duplicado, ignorado")
                 else:
                     stats["snapshots_salvos"] += 1
-                    posicao = dom.nossa_posicao if dom.nossa_posicao is not None else "-"
+                    posicao  = dom.nossa_posicao if dom.nossa_posicao is not None else "-"
                     sugestao = (
                         f"R$ {dom.preco_otimo_sugerido:.2f}"
                         if dom.preco_otimo_sugerido is not None else "—"
                     )
-                    tag_vis = "" if dom.visivel_no_catalogo else " [OFF-CATÁLOGO]"
+                    tag_vis  = "" if dom.visivel_no_catalogo else " [OFF-CATÁLOGO]"
                     tag_camp = ""
                     if dom.preco_cheio and dom.preco_cheio > dom.preco_atual + 0.01:
                         tag_camp = f" (cheio R$ {dom.preco_cheio:.2f})"
@@ -348,16 +378,6 @@ def coletar(skus_filtro: Optional[Iterable[str]] = None,
                         "preco_otimo_sugerido": dom.preco_otimo_sugerido,
                         "rc_atual_pct": dom.rc_atual_pct,
                     })
-            except Exception as exc:
-                stats["erros"] += 1
-                _print(f"  ✗ {sku} [{item_id}]: ERRO — {exc}")
-                _log_jsonl({"evento": "erro_processamento",
-                            "sku": sku, "item_id": item_id,
-                            "erro": str(exc),
-                            "trace": traceback.format_exc(limit=3),
-                            "ts": datetime.now().isoformat()})
-            time.sleep(0.1)
-        stats["skus_processados"] += 1
 
     duracao = round(time.time() - inicio, 1)
     _print(

@@ -210,8 +210,9 @@ def executar_ciclo(
                         "trace": traceback.format_exc(limit=5),
                         "ts": datetime.now().isoformat()})
 
-        # ---- 2) Alertas críticos ----
-        if avaliar_alertas:
+        # ---- 2) Alertas críticos (A1/A2/A3) ----
+        criticos_on = bool(cfg_buybox.get("alertas_criticos_habilitados", True))
+        if avaliar_alertas and criticos_on:
             try:
                 conta_stats["alertas"] = avaliador.avaliar_criticos_pendentes(
                     cfg=cfg, conta=conta,

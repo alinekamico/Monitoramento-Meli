@@ -42,7 +42,11 @@ login_manager.login_message = 'Por favor, faça login para acessar esta página.
 from src.auth.persistencia import buscar_usuario_por_id
 @login_manager.user_loader
 def load_user(user_id):
-    return buscar_usuario_por_id(int(user_id))
+    try:
+        return buscar_usuario_por_id(int(user_id))
+    except Exception as exc:
+        app.logger.warning("user_loader falhou (DB indisponível?): %s", exc)
+        return None
 
 from src.auth.rotas import auth_bp
 app.register_blueprint(auth_bp)
@@ -94,7 +98,7 @@ def _process_item(
 ) -> list[dict]:
     item_id      = item.get("id", "")
     listing_id   = item.get("listing_type_id", "")
-    tipo_anuncio = "Premium" if "gold_pro" in listing_id else sku_data["tipo_anuncio"]
+    tipo_anuncio = "Premium" if listing_id in ("gold_pro", "gold_premium") else sku_data["tipo_anuncio"]
     is_full      = item.get("shipping", {}).get("logistic_type") == "fulfillment"
     item_cfg     = {**cfg, "insumo_fixo": 0.0} if is_full else cfg
     has_stock    = item.get("available_quantity", 0) > 0
@@ -142,12 +146,12 @@ def _process_item(
                 "motivo":        None,
             })
 
-        candidatas = [c for c in campaigns["disponiveis"] if c.get("rebate_valor", 0) > 0]
+        candidatas = [c for c in campaigns["disponiveis"] if c.get("meli_percentage", 0) > 0]
         for campanha in candidatas:
             if campanha.get("type") == "PRICE_MATCHING":
                 preco = campanha.get("price") or 0.0
             else:
-                preco = campanha.get("suggested_price") or campanha.get("price") or 0.0
+                preco = campanha.get("suggested_price") or campanha.get("min_price") or campanha.get("price") or 0.0
 
             m = margem.calcular_margem(
                 preco_campanha=preco,
@@ -245,6 +249,7 @@ def gerenciar_skus():
         return jsonify([
             {
                 "sku":          sku,
+                "nome":         data.get("nome", ""),
                 "custo":        round(float(data.get("custo", 0)), 2),
                 "peso":         round(float(data.get("peso", 0)), 3),
                 "tipo_anuncio": data.get("tipo_anuncio", "Clássico"),
@@ -290,6 +295,12 @@ def gerenciar_skus():
             entrada["peso"] = round(float(it["peso"]), 3)
         if "tipo_anuncio" in it:
             entrada["tipo_anuncio"] = it["tipo_anuncio"]
+        if "nome" in it:
+            nome_val = str(it["nome"]).strip()
+            if nome_val:
+                entrada["nome"] = nome_val
+            elif "nome" in entrada:
+                del entrada["nome"]
 
     yaml_doc["skus"] = skus_yaml
     with open(skus_path, "w", encoding="utf-8") as f:
@@ -356,11 +367,15 @@ def rc_minimo():
         return jsonify({"erro": "rc_minimo fora do intervalo valido (0–300)"}), 400
 
     # Lê, atualiza e grava o YAML preservando o resto da configuração
-    with open(settings_path, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
-    cfg["rc_minimo"] = novo
-    with open(settings_path, "w", encoding="utf-8") as f:
-        yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    try:
+        with open(settings_path, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+        cfg["rc_minimo"] = novo
+        with open(settings_path, "w", encoding="utf-8") as f:
+            yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+    except Exception as exc:
+        app.logger.exception("Erro ao gravar settings.yaml: %s", exc)
+        return jsonify({"erro": f"Falha ao salvar configuração: {exc}"}), 500
 
     # Invalida cache de campanhas de todas as contas (RC mudou → summary muda)
     _CAMPAIGN_CACHE.clear()
@@ -650,6 +665,46 @@ def _serializar_concorrentes(concorrentes, snap=None) -> list[dict]:
     return out
 
 
+@app.route("/api/calcular-pdv", methods=["POST"])
+def calcular_pdv():
+    """
+    Calcula o breakdown do PDV para o Simulador de PDV.
+
+    Payload JSON:
+      { "preco": 147.0, "custo": 54.3, "rebate": 12.0,
+        "peso": 1.5, "tipo_anuncio": "Clássico" }
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        preco        = float(body["preco"])
+        custo        = float(body["custo"])
+        rebate       = float(body.get("rebate", 0))
+        peso         = float(body["peso"])
+        tipo_anuncio = str(body.get("tipo_anuncio", "Clássico"))
+        modalidade   = str(body.get("modalidade", "Normal"))
+    except (KeyError, TypeError, ValueError) as exc:
+        return jsonify({"erro": f"parâmetro inválido: {exc}"}), 400
+
+    if preco <= 0 or custo <= 0:
+        return jsonify({"erro": "preco e custo devem ser positivos"}), 400
+    if tipo_anuncio not in ("Clássico", "Premium"):
+        return jsonify({"erro": "tipo_anuncio deve ser 'Clássico' ou 'Premium'"}), 400
+    if modalidade not in ("Normal", "Full", "Super Full"):
+        return jsonify({"erro": "modalidade deve ser 'Normal', 'Full' ou 'Super Full'"}), 400
+
+    cfg = _load_settings()
+    m = margem.calcular_margem(
+        preco_campanha=preco,
+        custo=custo,
+        rebate=rebate,
+        peso=peso,
+        tipo_anuncio=tipo_anuncio,
+        modalidade=modalidade,
+        cfg=cfg,
+    )
+    return jsonify({**m, "rc_minimo": float(cfg.get("rc_minimo", 60.0))})
+
+
 @app.route("/api/buybox/lista")
 def buybox_lista():
     """Último snapshot de cada SKU para a tabela da aba Buybox."""
@@ -937,10 +992,12 @@ def buybox_sku_vendas(sku: str):
             "resumo": {"total_unidades": 0, "total_receita": 0.0, "por_preco": []},
         }), 200
 
+    max_p = {"24h": 100, "7d": 500, "30d": 1500}.get(periodo, 500)
     pedidos = ml_client.get_orders_for_item(
         item_id,
         desde_dt.strftime("%Y-%m-%dT%H:%M:%S.000-03:00"),
         ate_dt.strftime("%Y-%m-%dT%H:%M:%S.000-03:00"),
+        max_pedidos=max_p,
         conta=conta,
     )
 
@@ -963,61 +1020,80 @@ def buybox_sku_vendas(sku: str):
         except Exception:
             return _dt.min
 
+    desde_utc_naive = desde_dt.astimezone(timezone.utc).replace(tzinfo=None)
+    ate_utc_naive   = ate_dt.astimezone(timezone.utc).replace(tzinfo=None)
+
     pedidos_ts = sorted(
-        [(_ts(p.get("date_created", "")), p) for p in pedidos],
+        [
+            (ts, p)
+            for p in pedidos
+            for ts in [_ts(p.get("date_created", ""))]
+            if desde_utc_naive <= ts <= ate_utc_naive
+        ],
         key=lambda x: x[0],
     )
 
-    buckets = []
-    for i, snap in enumerate(historico):
-        ts_atual = snap.coletado_em.replace(tzinfo=None)
-        ts_prev  = (
-            historico[i - 1].coletado_em.replace(tzinfo=None)
-            if i > 0
-            else ts_atual - _td(hours=1)
-        )
+    # Agrupa pedidos por slot fixo: hora (≤48h) ou dia (>48h)
+    _por_hora = horas <= 48
+    from collections import defaultdict as _dd
 
-        pedidos_bucket = [
-            p for ts, p in pedidos_ts if ts_prev < ts <= ts_atual
-        ]
+    def _slot(dt: _dt) -> tuple:
+        return (dt.year, dt.month, dt.day, dt.hour) if _por_hora else (dt.year, dt.month, dt.day)
 
-        unidades = 0
-        receita  = 0.0
-        for p in pedidos_bucket:
-            for oi in (p.get("order_items") or []):
-                if (oi.get("item") or {}).get("id") == item_id:
-                    qty = int(oi.get("quantity") or 0)
-                    unidades += qty
-                    receita  += float(oi.get("unit_price") or 0) * qty
+    vendas_slot: dict = _dd(lambda: {"unidades": 0, "receita": 0.0})
+    for ts, p in pedidos_ts:
+        key = _slot(ts)
+        for oi in (p.get("order_items") or []):
+            if (oi.get("item") or {}).get("id") == item_id:
+                qty = int(oi.get("quantity") or 0)
+                vendas_slot[key]["unidades"] += qty
+                vendas_slot[key]["receita"]  += float(oi.get("unit_price") or 0) * qty
 
-        preco_medio = round(receita / unidades, 2) if unidades > 0 else None
+    # Preços: um ponto por snapshot (todos do período)
+    precos_list = [
+        {"ts": snap.coletado_em.isoformat(), "valor": float(snap.preco_atual)}
+        for snap in historico
+    ]
 
-        buckets.append({
-            "ts":             snap.coletado_em.isoformat(),
-            "preco_snapshot": snap.preco_atual,
-            "preco_medio":    preco_medio,
-            "unidades":       unidades,
-            "receita":        round(receita, 2),
+    # Vendas: um ponto por slot com dados
+    vendas_list = []
+    for key, v in sorted(vendas_slot.items()):
+        if _por_hora:
+            yr, mo, dy, hr = key
+            ts_slot = _dt(yr, mo, dy, hr, 0, 0).isoformat()
+        else:
+            yr, mo, dy = key
+            ts_slot = _dt(yr, mo, dy, 12, 0, 0).isoformat()
+        vendas_list.append({
+            "ts":       ts_slot,
+            "unidades": v["unidades"],
+            "receita":  round(v["receita"], 2),
         })
 
-    total_unidades = sum(b["unidades"] for b in buckets)
-    total_receita  = round(sum(b["receita"]  for b in buckets), 2)
+    total_unidades = sum(v["unidades"] for v in vendas_list)
+    total_receita  = round(sum(v["receita"] for v in vendas_list), 2)
 
-    por_preco: dict[float, dict] = {}
-    for snap, bucket in zip(historico, buckets):
-        chave = round(float(snap.preco_atual), 2)
+    # por_preco: agrega vendas pelo preço do snapshot mais recente do mesmo slot
+    preco_do_slot: dict = {}
+    for snap in historico:
+        preco_do_slot[_slot(snap.coletado_em.replace(tzinfo=None))] = float(snap.preco_atual)
+
+    por_preco: dict = {}
+    for key, v in vendas_slot.items():
+        if v["unidades"] == 0:
+            continue
+        chave = round(preco_do_slot.get(key, 0.0), 2)
         if chave not in por_preco:
             por_preco[chave] = {"preco": chave, "unidades": 0, "receita": 0.0}
-        por_preco[chave]["unidades"] += bucket["unidades"]
-        por_preco[chave]["receita"]   = round(
-            por_preco[chave]["receita"] + bucket["receita"], 2
-        )
+        por_preco[chave]["unidades"] += v["unidades"]
+        por_preco[chave]["receita"]   = round(por_preco[chave]["receita"] + v["receita"], 2)
 
     return jsonify({
         "sku":     sku,
         "item_id": item_id,
         "periodo": periodo,
-        "buckets": buckets,
+        "precos":  precos_list,
+        "vendas":  vendas_list,
         "resumo": {
             "total_unidades": total_unidades,
             "total_receita":  total_receita,
@@ -1182,6 +1258,45 @@ def oauth_callback():
 # ---------------------------------------------------------------------------
 # Debug (diagnóstico de campos de campanha devolvidos pela API ML)
 # ---------------------------------------------------------------------------
+
+@app.route("/api/debug/raw-orders/<item_id>")
+def debug_raw_orders(item_id: str):
+    """
+    Testa o endpoint /orders/search para o item diretamente, expondo o erro
+    real (403 de escopo ausente, 400 de parâmetro errado, etc.).
+
+    Ex.: GET /api/debug/raw-orders/MLB1234567890
+    """
+    from datetime import datetime as _dt, timezone, timedelta as _td
+    conta     = _conta_da_request()
+    seller_id = ml_client.get_seller_id(conta)
+    BRT       = timezone(_td(hours=-3))
+    ate_dt    = _dt.now(BRT)
+    desde_dt  = ate_dt - _td(hours=24 * 7)
+    import requests as _req
+    params = {
+        "seller":            seller_id,
+        "q":                 item_id,
+        "sort":              "date_desc",
+        "limit":             5,
+        "offset":            0,
+    }
+    try:
+        resp = _req.get(
+            "https://api.mercadolibre.com/orders/search",
+            headers=ml_client._auth_headers(conta),
+            params=params,
+            timeout=20,
+        )
+        return jsonify({
+            "item_id":     item_id,
+            "seller_id":   seller_id,
+            "status_code": resp.status_code,
+            "raw":         resp.json(),
+        })
+    except Exception as exc:
+        return jsonify({"erro": str(exc), "item_id": item_id, "seller_id": seller_id}), 500
+
 
 @app.route("/api/debug/raw-campanhas/<item_id>")
 def debug_raw_campanhas(item_id: str):

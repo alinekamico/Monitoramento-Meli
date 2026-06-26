@@ -1,5 +1,5 @@
 dry_run: false
-rc_minimo: 60.0
+rc_minimo: 58.0
 comissao_classico: 0.14
 comissao_premium: 0.19
 imposto_pct: 0.05
@@ -15,6 +15,7 @@ email:
   smtp_host: smtp.gmail.com
   smtp_port: 587
 buybox:
+  alertas_criticos_habilitados: false
   intervalo_coleta_minutos: 60
   cooldown_a1_horas: 0
   cooldown_a2_horas: 0

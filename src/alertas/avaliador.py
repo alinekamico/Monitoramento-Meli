@@ -201,6 +201,7 @@ def avaliar_criticos_pendentes(
             novo=novo, anterior=anterior, ante_anterior=ante_anterior,
             cfg_buybox=cfg_buybox,
         )
+
         for p in pendentes:
             stats["pendentes_detectados"] += 1
             stats["por_tipo"][p.tipo] = stats["por_tipo"].get(p.tipo, 0) + 1
@@ -314,9 +315,41 @@ def enviar_resumo_diario(
 # API pública — campanhas C1
 # ============================================================
 
-#: SKU sentinela para registrar o cooldown de C1 na tabela alertas.
-#: Não corresponde a nenhum produto — é só uma chave de controle.
 _C1_SENTINEL_SKU = "__campanhas__"
+
+
+def _c1_campanhas_enviadas(conta: str) -> set[tuple[str, str, float]]:
+    """
+    Retorna conjunto de (item_id, campanha_id, rebate_valor) já incluídos
+    em e-mails C1 enviados com sucesso.
+
+    O rebate_valor faz parte da chave: se o ML atualizar o valor do rebate
+    na mesma campanha, a combinação muda e o usuário é notificado novamente.
+    """
+    enviadas: set[tuple[str, str, float]] = set()
+    try:
+        with persistencia.sessao(conta) as s:
+            stmt = (
+                select(Alerta)
+                .where(
+                    Alerta.tipo == TIPO_C1_CAMPANHAS_ACEITAR,
+                    Alerta.enviado_em.is_not(None),
+                )
+            )
+            for alerta in s.execute(stmt).scalars():
+                try:
+                    dados = json.loads(alerta.dados or "{}")
+                    for c in dados.get("campanhas", []):
+                        cid    = c.get("campanha_id") or ""
+                        iid    = c.get("item_id") or ""
+                        rebate = round(float(c.get("rebate") or 0), 2)
+                        if cid and iid:
+                            enviadas.add((iid, cid, rebate))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return enviadas
 
 
 def avaliar_campanhas_aceitar(
@@ -325,19 +358,18 @@ def avaliar_campanhas_aceitar(
     conta: str = "best_hair",
 ) -> dict:
     """
-    Verifica se há campanhas de rebate com RC ≥ mínimo disponíveis para aceitar
-    em todos os SKUs monitorados e envia e-mail consolidado (C1) se houver.
+    Verifica campanhas de rebate (meli_percentage > 0) com RC ≥ mínimo
+    disponíveis para aceitar em todos os SKUs monitorados.
 
-    Envia no máximo 1 e-mail por `cooldown_c1_horas` (padrão 12h) para evitar
-    spam em ciclos consecutivos.
+    Cada campanha é rastreada pelo seu ID: uma vez notificada, não
+    reaparece em e-mails futuros. O e-mail só é enviado quando há
+    campanhas genuinamente novas.
 
     Retorna dict com:
-      campanhas_aceitar  — quantidade de campanhas ACEITAR encontradas
+      campanhas_aceitar  — quantidade de campanhas novas encontradas
       enviado            — se o e-mail foi de fato disparado
       motivo_supressao   — razão caso não tenha sido enviado
-      suprimido_cooldown — True quando ainda no período de cooldown
     """
-    # Importações locais para não criar dependência circular no topo do módulo
     from ..ml_client import get_seller_id, get_item_ids_by_sku, get_campaigns_for_item
     from ..margem import calcular_margem
     from ..decisor import decidir
@@ -348,18 +380,12 @@ def avaliar_campanhas_aceitar(
     if dry_run is None:
         dry_run = bool(cfg.get("dry_run", True))
 
-    cfg_buybox   = cfg.get("buybox", {}) or {}
-    cfg_email    = (cfg_buybox.get("email") or {}).copy()
-    rc_min       = float(cfg.get("rc_minimo", 60.0))
-    cooldown_h   = int(cfg_buybox.get("cooldown_c1_horas", 12))
+    cfg_buybox = cfg.get("buybox", {}) or {}
+    cfg_email  = (cfg_buybox.get("email") or {}).copy()
+    rc_min     = float(cfg.get("rc_minimo", 60.0))
 
-    # Checa cooldown (uma entrada por conta, usando SKU sentinela)
-    if _em_cooldown(_C1_SENTINEL_SKU, TIPO_C1_CAMPANHAS_ACEITAR, cooldown_h, conta=conta):
-        _log.info("C1 suprimido por cooldown (%sh) — conta=%s", cooldown_h, conta)
-        return {"suprimido_cooldown": True, "campanhas_aceitar": 0,
-                "enviado": False, "motivo_supressao": "cooldown"}
+    ja_notificadas = _c1_campanhas_enviadas(conta)
 
-    # Carrega SKUs do YAML
     skus_path = Path(__file__).parent.parent.parent / "config" / "skus.yaml"
     with open(skus_path, encoding="utf-8") as f:
         doc = _yaml.safe_load(f) or {}
@@ -377,6 +403,7 @@ def avaliar_campanhas_aceitar(
                 "motivo_supressao": f"sem_seller_id: {exc}"}
 
     itens_aceitar: list[dict] = []
+    total_encontradas = 0  # ACEITAR antes do filtro de dedup
 
     for sku, sku_data in skus.items():
         try:
@@ -392,20 +419,19 @@ def avaliar_campanhas_aceitar(
                 _log.warning("C1: erro ao buscar campanhas item=%s — %s", item_id, exc)
                 continue
 
-            # Busca último snapshot para enriquecer o e-mail com dados atuais
             snap_atual = None
             try:
                 snap_atual, _, _ = _trio_snapshots(sku, item_id, conta=conta)
             except Exception:
-                pass  # fallback: campos ficam None no e-mail
+                pass
 
-            preco_atual_snap  = snap_atual.preco_atual     if snap_atual else None
-            rc_atual_snap     = snap_atual.rc_atual_pct    if snap_atual else None
-            posicao_snap      = snap_atual.nossa_posicao   if snap_atual else None
+            preco_atual_snap = snap_atual.preco_atual      if snap_atual else None
+            rc_atual_snap    = snap_atual.rc_atual_pct     if snap_atual else None
+            posicao_snap     = snap_atual.nossa_posicao    if snap_atual else None
+            estoque_snap     = snap_atual.estoque_proprio  if snap_atual else None
 
-            # Campanha(s) ativa(s) já participando
             ativas = campaigns.get("ativas") or []
-            ja_em_campanha    = len(ativas) > 0
+            ja_em_campanha      = len(ativas) > 0
             campanha_ativa_nome = (
                 ativas[0].get("name") or ativas[0].get("type") or "Sim"
                 if ativas else None
@@ -413,10 +439,9 @@ def avaliar_campanhas_aceitar(
 
             candidatas = [
                 c for c in (campaigns.get("disponiveis") or [])
-                if c.get("rebate_valor", 0) > 0
+                if c.get("meli_percentage", 0) > 0
             ]
             for campanha in candidatas:
-                # Replica a lógica de precificação do server._process_item
                 tipo_anuncio = sku_data.get("tipo_anuncio", "Clássico")
                 if campanha.get("type") == "PRICE_MATCHING":
                     preco = campanha.get("price") or 0.0
@@ -437,36 +462,52 @@ def avaliar_campanhas_aceitar(
                     continue
 
                 resultado_d = decidir(resultado_m, rc_min)
-                if resultado_d["decisao"] == "ACEITAR":
-                    itens_aceitar.append({
-                        "sku":                sku,
-                        "item_id":            item_id,
-                        "campanha_nome":      campanha.get("name") or campanha.get("type") or "—",
-                        # Estado atual do anúncio
-                        "preco_atual":        preco_atual_snap,
-                        "rc_atual":           rc_atual_snap,
-                        "posicao_buybox":     posicao_snap,
-                        "ja_em_campanha":     ja_em_campanha,
-                        "campanha_ativa_nome": campanha_ativa_nome,
-                        # Dados da campanha disponível
-                        "preco_campanha":     preco,
-                        "rebate":             campanha.get("rebate_valor", 0.0),
-                        "rc_campanha":        resultado_m.get("rc_pct", 0.0),
-                        "motivo":             resultado_d["motivo"],
-                        "vigencia_fim":       campanha.get("finish_date") or "",
-                    })
+                if resultado_d["decisao"] != "ACEITAR":
+                    continue
+
+                total_encontradas += 1
+                campanha_id  = campanha.get("id") or campanha.get("ref_id") or ""
+                rebate_atual = round(float(campanha.get("rebate_valor") or 0), 2)
+                if campanha_id and (item_id, campanha_id, rebate_atual) in ja_notificadas:
+                    continue  # já notificada com este rebate
+
+                itens_aceitar.append({
+                    "sku":                sku,
+                    "item_id":            item_id,
+                    "campanha_id":        campanha_id,
+                    "campanha_nome":      campanha.get("name") or campanha.get("type") or "—",
+                    # Estado atual do anúncio
+                    "preco_atual":        preco_atual_snap,
+                    "rc_atual":           rc_atual_snap,
+                    "posicao_buybox":     posicao_snap,
+                    "estoque":            estoque_snap,
+                    "ja_em_campanha":     ja_em_campanha,
+                    "campanha_ativa_nome": campanha_ativa_nome,
+                    # Dados da campanha disponível
+                    "preco_campanha":     preco,
+                    "rebate":             campanha.get("rebate_valor", 0.0),
+                    "rc_campanha":        resultado_m.get("rc_pct", 0.0),
+                    "motivo":             resultado_d["motivo"],
+                    "vigencia_fim":       campanha.get("finish_date") or "",
+                })
 
     if not itens_aceitar:
-        _log.info("C1 — nenhuma campanha ACEITAR encontrada — conta=%s", conta)
+        if total_encontradas > 0:
+            _log.info(
+                "C1 — %d campanha(s) ACEITAR mas todas já notificadas — conta=%s",
+                total_encontradas, conta,
+            )
+            return {"campanhas_aceitar": 0, "enviado": False,
+                    "motivo_supressao": "todas_ja_notificadas"}
+        _log.info("C1 — 0 campanhas com RC >= %.0f%% encontradas — conta=%s", rc_min, conta)
         return {"campanhas_aceitar": 0, "enviado": False, "motivo_supressao": "sem_campanhas"}
 
-    # --- Envia e-mail ---
-    enviado       = False
+    enviado      = False
     motivo_sup: Optional[str] = None
 
     if dry_run:
         motivo_sup = "dry_run"
-        _log.info("C1 dry_run — %d campanha(s) encontrada(s) para conta=%s",
+        _log.info("C1 dry_run — %d campanha(s) nova(s) para conta=%s",
                   len(itens_aceitar), conta)
     elif not cfg_email.get("enabled"):
         motivo_sup = "email_desabilitado"
@@ -475,7 +516,7 @@ def avaliar_campanhas_aceitar(
             assunto, html = templates.template_c1_campanhas(itens_aceitar, conta)
             email_mod.enviar_email(assunto, html, cfg_email)
             enviado = True
-            _log.info("C1 enviado — %d campanha(s) — conta=%s",
+            _log.info("C1 enviado — %d campanha(s) nova(s) — conta=%s",
                       len(itens_aceitar), conta)
         except email_mod.EmailDesabilitado:
             motivo_sup = "email_desabilitado"
@@ -485,10 +526,9 @@ def avaliar_campanhas_aceitar(
             motivo_sup = f"erro_smtp: {exc.__class__.__name__}: {exc}"
             _log.warning("C1 falha SMTP conta=%s motivo=%s", conta, motivo_sup)
 
-    # Registra no banco (para cooldown funcionar na próxima verificação)
     dados_persist: dict = {
-        "campanhas":          itens_aceitar,
-        "total":              len(itens_aceitar),
+        "campanhas": itens_aceitar,
+        "total":     len(itens_aceitar),
     }
     if motivo_sup:
         dados_persist["motivo_supressao"] = motivo_sup
@@ -503,10 +543,9 @@ def avaliar_campanhas_aceitar(
     )
 
     return {
-        "campanhas_aceitar":  len(itens_aceitar),
-        "enviado":            enviado,
-        "motivo_supressao":   motivo_sup,
-        "suprimido_cooldown": False,
+        "campanhas_aceitar": len(itens_aceitar),
+        "enviado":           enviado,
+        "motivo_supressao":  motivo_sup,
     }
 
 

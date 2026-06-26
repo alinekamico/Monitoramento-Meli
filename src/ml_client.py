@@ -11,6 +11,7 @@ usa o valor sem sufixo para a conta best_hair — migração transparente.
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from pathlib import Path
@@ -20,6 +21,8 @@ import yaml
 from dotenv import load_dotenv, set_key
 
 load_dotenv()
+
+_log = logging.getLogger(__name__)
 
 _BASE_URL  = "https://api.mercadolibre.com"
 _TOKEN_URL = f"{_BASE_URL}/oauth/token"
@@ -153,7 +156,8 @@ def get_item_ids_by_sku(seller_id: str, sku: str, conta: str = "best_hair") -> l
             params={"seller_sku": sku, "limit": 10},
         )
         return data.get("results", [])
-    except Exception:
+    except Exception as exc:
+        _log.warning("get_item_ids_by_sku sku=%s: %s", sku, exc)
         return []
 
 
@@ -190,7 +194,8 @@ def _parse_promotion(raw: dict) -> dict:
     price          = float(raw.get("price", 0) or 0)
     meli_pct       = float(raw.get("meli_percentage", 0) or 0)
     seller_pct     = float(raw.get("seller_percentage", 0) or 0)
-    rebate_valor   = round(original_price * meli_pct / 100, 2) if original_price else 0.0
+    _base_rebate   = original_price or price  # fallback: price quando original_price ausente
+    rebate_valor   = round(_base_rebate * meli_pct / 100, 2) if (_base_rebate and meli_pct) else 0.0
 
     _nested = {
         **{k: v for sub in ["deal", "conditions", "schedule", "promotion", "validity"]
@@ -253,6 +258,10 @@ def get_campaigns_for_item(item_id: str, conta: str = "best_hair") -> dict:
             data = _request("GET", url, conta=conta, params=params)
             if isinstance(data, list):
                 raw_list = data
+            elif isinstance(data, dict):
+                raw_list = data.get("results") or data.get("promotions") or []
+                if not raw_list:
+                    _log.warning("get_campaigns_for_item %s: dict inesperado da API: chaves=%s", item_id, list(data.keys()))
             last_exc = None
             break
         except requests.HTTPError as exc:
@@ -280,6 +289,8 @@ def get_campaigns_for_item(item_id: str, conta: str = "best_hair") -> dict:
             ativas.append(entry)
         elif entry["status"] == "candidate":
             disponiveis.append(entry)
+        else:
+            _log.debug("get_campaigns_for_item %s: status ignorado '%s' (id=%s)", item_id, entry["status"], entry.get("id"))
 
     return {"ativas": ativas, "disponiveis": disponiveis}
 
@@ -393,19 +404,24 @@ def get_orders_for_item(
 
     while len(resultados) < max_pedidos:
         try:
-            data = _request("GET", f"{_BASE_URL}/orders/search", conta=conta, params={
-                "seller":            seller_id,
-                "item.id":           item_id,
-                "date_created.from": desde_iso,
-                "date_created.to":   ate_iso,
-                "sort":              "date_created_asc",
-                "limit":             min(batch, max_pedidos - len(resultados)),
-                "offset":            offset,
-            })
-        except Exception:
+            params: dict = {
+                "seller": seller_id,
+                "q":      item_id,
+                "sort":   "date_desc",
+                "limit":  min(batch, max_pedidos - len(resultados)),
+                "offset": offset,
+            }
+            if desde_iso:
+                params["date_created.from"] = desde_iso
+            if ate_iso:
+                params["date_created.to"] = ate_iso
+            data = _request("GET", f"{_BASE_URL}/orders/search", conta=conta, params=params)
+        except Exception as exc:
+            _log.warning("get_orders_for_item item=%s offset=%d: %s", item_id, offset, exc)
             break
 
         if not isinstance(data, dict):
+            _log.warning("get_orders_for_item item=%s: resposta inesperada tipo %s", item_id, type(data).__name__)
             break
 
         paging  = data.get("paging") or {}

@@ -21,6 +21,7 @@ import yaml
 
 _CONFIG_DIR = Path(__file__).parent.parent / "config"
 _frete_cache: dict | None = None
+_superfull_cache: dict | None = None
 
 
 def _load_frete() -> dict:
@@ -29,6 +30,14 @@ def _load_frete() -> dict:
         with open(_CONFIG_DIR / "frete_tabela.yaml", encoding="utf-8") as f:
             _frete_cache = yaml.safe_load(f)
     return _frete_cache
+
+
+def _load_superfull() -> dict:
+    global _superfull_cache
+    if _superfull_cache is None:
+        with open(_CONFIG_DIR / "superfull_tabela.yaml", encoding="utf-8") as f:
+            _superfull_cache = yaml.safe_load(f)
+    return _superfull_cache
 
 
 def calcular_frete(preco: float, peso: float) -> float:
@@ -46,6 +55,21 @@ def calcular_frete(preco: float, peso: float) -> float:
     return float(tabela[w_idx][p_idx])
 
 
+def calcular_frete_superfull(preco: float, peso: float) -> float:
+    sf_cfg = _load_superfull()
+    preco_breaks = sf_cfg["preco_breaks"]
+    peso_breaks  = sf_cfg["peso_breaks"]
+    tabela       = sf_cfg["tabela"]
+
+    p_idx = max(0, bisect.bisect_right(preco_breaks, preco) - 1)
+    w_idx = max(0, bisect.bisect_right(peso_breaks,  peso)  - 1)
+
+    p_idx = min(p_idx, len(preco_breaks) - 1)
+    w_idx = min(w_idx, len(peso_breaks)  - 1)
+
+    return float(tabela[w_idx][p_idx])
+
+
 def calcular_margem(
     preco_campanha: float,
     custo: float,
@@ -53,6 +77,7 @@ def calcular_margem(
     peso: float,
     tipo_anuncio: str,
     cfg: dict,
+    modalidade: str = "Normal",
 ) -> dict:
     """
     Parâmetros
@@ -76,9 +101,16 @@ def calcular_margem(
     )
 
     comissao = preco_campanha * comissao_pct
-    frete    = calcular_frete(preco_campanha, peso)
+    if modalidade == "Super Full":
+        frete = calcular_frete_superfull(preco_campanha, peso)
+        insumo = 0.0
+    elif modalidade == "Full":
+        frete  = calcular_frete(preco_campanha, peso)
+        insumo = 0.0
+    else:
+        frete  = calcular_frete(preco_campanha, peso)
+        insumo = cfg["insumo_fixo"]
     imposto  = preco_campanha * cfg["imposto_pct"]
-    insumo   = cfg["insumo_fixo"]
     reversa  = preco_campanha * cfg["reversa_pct"]
 
     lucro_bruto = preco_campanha - custo - comissao - frete - imposto - insumo - reversa + rebate
