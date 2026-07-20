@@ -10,5 +10,5 @@ sudo systemctl restart buybox-server
 echo ==> Reiniciando scheduler...
 sudo systemctl restart buybox-scheduler
 
-echo "
-echo Deploy concluído! Acesse: http://137.131.134.197/monitoramentomeli
+echo ""
+echo "Deploy concluído! Acesse: http://137.131.134.197/monitoramentomeli"
