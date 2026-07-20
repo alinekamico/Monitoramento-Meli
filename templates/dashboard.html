@@ -299,23 +299,41 @@
     .fila-table {
       width: 100%; border-collapse: collapse; font-size: 13px;
     }
-    .fila-table th {
-      padding: 8px 10px; border-bottom: 1px solid var(--border);
-      color: var(--muted); font-weight: 600; font-size: 11px;
-      text-transform: uppercase; letter-spacing: .4px; white-space: nowrap;
+    /* Anula o sticky global (thead th) que não funciona dentro de overflow-x:auto */
+    .fila-table thead th {
+      position: static !important;
+      top: auto !important;
+      z-index: auto !important;
+      box-shadow: none !important;
+      cursor: default !important;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      white-space: nowrap;
+      background: var(--surface);
     }
     .fila-table td {
       padding: 9px 10px; border-bottom: 1px solid var(--border);
       vertical-align: middle; white-space: nowrap;
     }
     .fila-table tbody tr:hover { background: var(--hover); }
-    .fila-acoes { display: flex; gap: 6px; justify-content: center; }
-    .btn-aprovar  { background: rgba(34,197,94,.15);  color: var(--green); border: 1px solid rgba(34,197,94,.3);  }
-    .btn-rejeitar { background: rgba(239,68,68,.12);  color: var(--red);   border: 1px solid rgba(239,68,68,.3);  }
-    .btn-adiar    { background: rgba(250,204,21,.12); color: var(--accent); border: 1px solid rgba(250,204,21,.3); }
-    .btn-aprovar:hover  { background: rgba(34,197,94,.3); }
-    .btn-rejeitar:hover { background: rgba(239,68,68,.25); }
-    .btn-adiar:hover    { background: rgba(250,204,21,.25); }
+    .fila-acoes { display: flex; gap: 5px; justify-content: center; }
+    /* Botão base reutilizado pelas ações da fila */
+    .btn-sm {
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); padding: 4px 10px; border-radius: 6px;
+      font-size: 11px; font-weight: 600; cursor: pointer;
+      transition: all 0.15s; white-space: nowrap;
+    }
+    .btn-aprovar  { background: rgba(34,197,94,.12);  color: var(--green);  border-color: rgba(34,197,94,.35); }
+    .btn-rejeitar { background: rgba(239,68,68,.10);  color: var(--red);    border-color: rgba(239,68,68,.35); }
+    .btn-adiar    { background: rgba(250,204,21,.10); color: var(--accent); border-color: rgba(250,204,21,.35); }
+    .btn-aprovar:hover  { background: rgba(34,197,94,.25); }
+    .btn-rejeitar:hover { background: rgba(239,68,68,.22); }
+    .btn-adiar:hover    { background: rgba(250,204,21,.22); }
     .fila-status-chip {
       display: inline-block; padding: 2px 8px; border-radius: 10px;
       font-size: 11px; font-weight: 600;
@@ -5116,7 +5134,10 @@
   }
 
   function _filaIdade(iso) {
-    const diff = (Date.now() - new Date(iso).getTime()) / 60000;
+    // Python salva UTC sem '+00:00' — forçamos Z para o JS não interpretar como horário local
+    const ts   = (iso && !iso.endsWith('Z') && !iso.includes('+')) ? iso + 'Z' : iso;
+    const diff = (Date.now() - new Date(ts).getTime()) / 60000;
+    if (diff < 1)     return 'agora';
     if (diff < 60)    return Math.round(diff) + ' min';
     if (diff < 1440)  return Math.round(diff / 60) + 'h';
     return Math.round(diff / 1440) + 'd';
