@@ -60,9 +60,9 @@
     <div class="logo-text"><h1>Central de Promocoes ML</h1><p>Gerenciamento de usuarios</p></div>
   </div>
   <div class="hdr-right">
-    <a href="/" class="btn btn-ghost">&#8592; Voltar ao painel</a>
+    <a href="{{ url_for('index') }}" class="btn btn-ghost">&#8592; Voltar ao painel</a>
     <button class="btn btn-primary" onclick="abrirModal()">+ Novo usuario</button>
-    <a href="/logout" class="btn btn-ghost">Sair</a>
+    <a href="{{ url_for('auth.logout') }}" class="btn btn-ghost">Sair</a>
   </div>
 </header>
 <main>
@@ -98,12 +98,12 @@
   </div>
 </div>
 <script>
-const API="/api/usuarios";
+const API="/monitoramentomeli/api/usuarios";
 let editId=null;
 async function carregar(){
   try{
     const r=await fetch(API,{credentials:"include"});
-    if(r.status===403){location.href="/";return;}
+    if(r.status===403){location.href="{{ url_for('index') }}";return;}
     const lista=await r.json();
     document.getElementById("loading").style.display="none";
     document.getElementById("conteudo").style.display="";

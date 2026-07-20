@@ -1119,7 +1119,7 @@
   <button class="tab-btn"        data-tab="buybox"     onclick="switchTab('buybox',this)">Buybox</button>
   <button class="tab-btn"        data-tab="simulador"  onclick="switchTab('simulador',this)">Simulador PDV</button>
 
-  <a class="tab-btn" id="tab-admin-link" href="/usuarios" style="display:none;">Usuários</a>
+  <a class="tab-btn" id="tab-admin-link" href="/monitoramentomeli/usuarios" style="display:none;">Usuários</a>
 </nav>
 
 <!-- ABA CAMPANHAS (preservada do original) -->
@@ -4418,7 +4418,7 @@
     window.simActivate = function() {
       simLoad();
       if (!simSkus.length) {
-        fetch('/api/skus',{credentials:'include'})
+        fetch(_BASE + '/api/skus',{credentials:'include'})
           .then(function(r){return r.ok?r.json():[];})
           .then(function(d){simSkus=d||[];})
           .catch(function(){});

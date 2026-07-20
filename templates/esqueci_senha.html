@@ -81,7 +81,7 @@
         ✅ <strong>E-mail enviado!</strong><br>
         {{ mensagem }}
       </div>
-      <a href="/login" class="btn-submit" style="display:block;text-align:center;text-decoration:none;">
+      <a href="{{ url_for('auth.login') }}" class="btn-submit" style="display:block;text-align:center;text-decoration:none;">
         Voltar ao login
       </a>
     {% else %}
@@ -97,7 +97,7 @@
         <input type="email" name="email" placeholder="seu@email.com" autofocus required/>
         <button type="submit" class="btn-submit">Enviar link de recuperação</button>
       </form>
-      <a href="/login" class="voltar">← Voltar ao login</a>
+      <a href="{{ url_for('auth.login') }}" class="voltar">← Voltar ao login</a>
     {% endif %}
   </div>
 </body>
