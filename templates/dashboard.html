@@ -5191,11 +5191,11 @@
       const res  = await fetch(`${_BASE}/api/fila/contagem`);
       if (!res.ok) return;
       const json = await res.json();
-      const total = json.total || 0;
+      const contaCnt = (json.por_conta || {})[_contaAtiva] || 0;
       const badge = document.getElementById('fila-badge');
       if (!badge) return;
-      if (total > 0) {
-        badge.textContent = total;
+      if (contaCnt > 0) {
+        badge.textContent = contaCnt;
         badge.style.display = '';
       } else {
         badge.style.display = 'none';
