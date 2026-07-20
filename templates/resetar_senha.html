@@ -92,7 +92,7 @@
         Este link de recuperação não existe ou já foi utilizado.<br>
         Solicite um novo link na tela de login.
       </div>
-      <a href="/login" class="voltar">← Voltar ao login</a>
+      <a href="{{ url_for('auth.login') }}" class="voltar">← Voltar ao login</a>
 
     {% elif token_expirado %}
       <div class="alerta">
@@ -101,7 +101,7 @@
         Este link de recuperação expirou (validade de 1 hora).<br>
         Solicite um novo link na tela de login.
       </div>
-      <a href="/esqueci-senha" class="btn-submit" style="display:block;text-align:center;text-decoration:none;margin-top:20px;">
+      <a href="{{ url_for('auth.esqueci_senha') }}" class="btn-submit" style="display:block;text-align:center;text-decoration:none;margin-top:20px;">
         Solicitar novo link
       </a>
 
@@ -110,7 +110,7 @@
         <div class="icon">✅</div>
         <h2>Senha redefinida!</h2>
         <p>Sua senha foi atualizada com sucesso.<br>Você já pode fazer login com a nova senha.</p>
-        <a href="/login" class="btn-submit" style="display:block;text-decoration:none;">
+        <a href="{{ url_for('auth.login') }}" class="btn-submit" style="display:block;text-decoration:none;">
           Ir para o login
         </a>
       </div>
@@ -136,7 +136,7 @@
         </div>
         <button type="submit" class="btn-submit">Salvar nova senha</button>
       </form>
-      <a href="/login" class="voltar">← Voltar ao login</a>
+      <a href="{{ url_for('auth.login') }}" class="voltar">← Voltar ao login</a>
     {% endif %}
   </div>
 </body>

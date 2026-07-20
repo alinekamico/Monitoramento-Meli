@@ -22,6 +22,7 @@ import os
 from flask import Flask, jsonify, redirect, render_template, request, send_from_directory, url_for
 from flask_cors import CORS
 from flask_login import LoginManager, login_required, current_user  # mantido para o blueprint de auth
+from werkzeug.middleware.proxy_fix import ProxyFix
 from dotenv import load_dotenv
 
 from src import decisor, margem, ml_client, pdv
@@ -32,6 +33,10 @@ _CONFIG_DIR = Path(__file__).parent / "config"
 load_dotenv()
 app = Flask(__name__, static_folder=str(Path(__file__).parent), template_folder=str(Path(__file__).parent / "templates"))
 CORS(app)
+_APP_PREFIX = os.environ.get('APP_PREFIX', '')
+if _APP_PREFIX:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+    app.config['APPLICATION_ROOT'] = _APP_PREFIX
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-change-in-prod')
 
 # Flask-Login
@@ -217,7 +222,7 @@ def _process_item(
 @app.route("/")
 @login_required
 def index():
-    return send_from_directory(str(Path(__file__).parent), "dashboard.html")
+    return render_template("dashboard.html", app_prefix=os.environ.get("APP_PREFIX", ""))
 
 
 @app.route("/api/health")
@@ -1337,7 +1342,7 @@ def debug_raw_campanhas(item_id: str):
 def usuarios_page():
     if not current_user.is_authenticated or current_user.perfil != 'admin':
         return redirect(url_for('auth.login'))
-    return render_template('usuarios.html')
+    return render_template('usuarios.html', app_prefix=os.environ.get('APP_PREFIX', ''))
 
 
 if __name__ == "__main__":
