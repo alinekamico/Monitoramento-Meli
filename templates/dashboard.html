@@ -2142,9 +2142,10 @@
       rcMin = novo;
       document.getElementById('c-rcmin').textContent = novo + '%';
       fecharEdicaoRc();
-      // Re-renderiza a tabela com a nova regra de cor/decisao
-      render();
       showToast(`RC mínimo atualizado para ${novo}%`, 'ok');
+      // Recarrega dados do servidor para atualizar cores e decisões
+      if (activeTab === 'campanhas') loadData(true);
+      else if (activeTab === 'buybox') { render(); renderBx(); }
     } catch (err) {
       showToast('Erro ao salvar RC mínimo: ' + err.message, 'err');
     }
@@ -2767,13 +2768,11 @@
             </div>`;
   }
 
-  // Classificação canônica por RC: RC >= 60 verde, 50-60 amarelo, < 50 vermelho.
-  // Usado tanto para a célula Margem quanto para o RC em si — assim os dois
-  // sempre concordam visualmente (a métrica de decisão é o RC).
+  // Classificação por RC usando o rc_minimo configurado (mesmo critério de rcClass).
   function corPorRC(rc) {
     if (rc == null) return '';
-    if (rc >= 60) return 'rc-high';
-    if (rc >= 50) return 'rc-mid';
+    if (rc >= rcMin)        return 'rc-high';
+    if (rc >= rcMin * 0.7)  return 'rc-mid';
     return 'rc-low';
   }
 
