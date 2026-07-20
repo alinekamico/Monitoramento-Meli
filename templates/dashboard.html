@@ -5150,7 +5150,8 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       showToast('Campanha aprovada — abra o Mercado Livre para confirmar.', 'ok');
       // Abre a Central de Promoções ML para o item
-      window.open(`https://www.mercadolivre.com.br/promotions/central?item_id=${itemId}`, '_blank');
+      const _mlNumId = itemId.replace(/^MLB/i, '');
+      window.open(`https://www.mercadolivre.com.br/anuncios/lista/promos?page=1&search=${_mlNumId}`, '_blank');
       _filaItens = _filaItens.filter(it => it.id !== id);
       _renderFila();
       _atualizarFilaBadge();
