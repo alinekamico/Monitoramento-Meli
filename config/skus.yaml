@@ -92,6 +92,10 @@ skus:
     custo: 164.51
     peso: 2.0
     tipo_anuncio: Clássico
+  WLK237:
+    custo: 121.48
+    peso: 0.2
+    tipo_anuncio: Clássico
   WLK249:
     custo: 142.5
     peso: 2.0
