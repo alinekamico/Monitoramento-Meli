@@ -93,7 +93,7 @@
       </div>
     </div>
 
-    <form method="POST" action="/login">
+    <form method="POST" action="{{ url_for('auth.login') }}">
       {% if erro %}
       <div class="erro">{{ erro }}</div>
       {% endif %}

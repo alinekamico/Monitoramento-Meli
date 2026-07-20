@@ -22,6 +22,7 @@ import os
 from flask import Flask, jsonify, redirect, render_template, request, send_from_directory, url_for
 from flask_cors import CORS
 from flask_login import LoginManager, login_required, current_user  # mantido para o blueprint de auth
+from werkzeug.middleware.proxy_fix import ProxyFix
 from dotenv import load_dotenv
 
 from src import decisor, margem, ml_client, pdv
@@ -32,6 +33,8 @@ _CONFIG_DIR = Path(__file__).parent / "config"
 load_dotenv()
 app = Flask(__name__, static_folder=str(Path(__file__).parent), template_folder=str(Path(__file__).parent / "templates"))
 CORS(app)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+app.config["APPLICATION_ROOT"] = "/monitoramentomeli"
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-change-in-prod')
 
 # Flask-Login
