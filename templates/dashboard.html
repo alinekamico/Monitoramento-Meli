@@ -334,6 +334,8 @@
     .btn-aprovar:hover  { background: rgba(34,197,94,.25); }
     .btn-rejeitar:hover { background: rgba(239,68,68,.22); }
     .btn-adiar:hover    { background: rgba(250,204,21,.22); }
+    .btn-editar-status  { color: var(--muted); padding: 3px 7px; margin-left: 4px; }
+    .btn-editar-status:hover { color: var(--text); background: var(--hover); }
     .fila-status-chip {
       display: inline-block; padding: 2px 8px; border-radius: 10px;
       font-size: 11px; font-weight: 600;
@@ -5047,7 +5049,7 @@
     _filaFiltro = status;
     document.querySelectorAll('[data-fila-filter]').forEach(b => b.classList.remove('active'));
     el.classList.add('active');
-    _renderFila();
+    loadFila();
   }
 
   async function loadFila() {
@@ -5114,7 +5116,9 @@
       `;
     } else {
       const chipCls = {APROVADO:'fila-chip-aprovado', REJEITADO:'fila-chip-rejeitado', ADIADO:'fila-chip-adiado'}[it.status] || '';
-      acoes = `<span class="fila-status-chip ${chipCls}">${it.status}</span>`;
+      const chipLabel = it.status.charAt(0) + it.status.slice(1).toLowerCase();
+      acoes = `<span class="fila-status-chip ${chipCls}">${chipLabel}</span>
+        <button class="btn-sm btn-editar-status" onclick="filaEditarStatus(${it.id},'${it.status}')" title="Alterar status">✎</button>`;
     }
 
     return `<tr>
@@ -5129,7 +5133,7 @@
       <td class="mono" style="text-align:center">${it.estoque != null ? it.estoque : '—'}</td>
       <td style="font-size:11px;color:var(--muted)">${vigencia}</td>
       <td style="font-size:11px;color:var(--muted);text-align:center">${coletado}</td>
-      <td><div class="fila-acoes">${acoes}</div></td>
+      <td><div class="fila-acoes" id="fila-acoes-${it.id}">${acoes}</div></td>
     </tr>`;
   }
 
@@ -5149,11 +5153,9 @@
         headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})});
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       showToast('Campanha aprovada — abra o Mercado Livre para confirmar.', 'ok');
-      // Abre a Central de Promoções ML para o item
       const _mlNumId = itemId.replace(/^MLB/i, '');
       window.open(`https://www.mercadolivre.com.br/anuncios/lista/promos?page=1&search=${_mlNumId}`, '_blank');
-      _filaItens = _filaItens.filter(it => it.id !== id);
-      _renderFila();
+      await loadFila();
       _atualizarFilaBadge();
     } catch (err) {
       showToast('Erro ao aprovar: ' + err.message, 'err');
@@ -5166,8 +5168,7 @@
         headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})});
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       showToast('Campanha rejeitada.', 'ok');
-      _filaItens = _filaItens.filter(it => it.id !== id);
-      _renderFila();
+      await loadFila();
       _atualizarFilaBadge();
     } catch (err) {
       showToast('Erro ao rejeitar: ' + err.message, 'err');
@@ -5179,11 +5180,42 @@
       const res = await fetch(`${_BASE}/api/fila/${id}/adiar`, {method: 'POST'});
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       showToast('Campanha adiada — reaparece na próxima coleta.', 'ok');
-      _filaItens = _filaItens.filter(it => it.id !== id);
-      _renderFila();
+      await loadFila();
       _atualizarFilaBadge();
     } catch (err) {
       showToast('Erro ao adiar: ' + err.message, 'err');
+    }
+  }
+
+  function filaEditarStatus(id, statusAtual) {
+    const cell = document.getElementById('fila-acoes-' + id);
+    if (!cell) return;
+    const opts = ['PENDENTE','APROVADO','REJEITADO','ADIADO']
+      .map(s => `<option value="${s}"${s === statusAtual ? ' selected' : ''}>${s.charAt(0) + s.slice(1).toLowerCase()}</option>`)
+      .join('');
+    cell.innerHTML = `
+      <select id="fila-sel-${id}" style="font-size:11px;padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);margin-right:4px">${opts}</select>
+      <button class="btn-sm btn-aprovar" style="padding:3px 8px" onclick="filaConfirmarEdicao(${id})">✓</button>
+      <button class="btn-sm" style="padding:3px 8px" onclick="loadFila()">✕</button>
+    `;
+  }
+
+  async function filaConfirmarEdicao(id) {
+    const sel = document.getElementById('fila-sel-' + id);
+    if (!sel) return;
+    const novoStatus = sel.value;
+    try {
+      const res = await fetch(`${_BASE}/api/fila/${id}/alterar-status?${_cParam()}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({status: novoStatus})
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showToast('Status alterado para ' + novoStatus.charAt(0) + novoStatus.slice(1).toLowerCase() + '.', 'ok');
+      await loadFila();
+      _atualizarFilaBadge();
+    } catch (err) {
+      showToast('Erro ao alterar status: ' + err.message, 'err');
     }
   }
 

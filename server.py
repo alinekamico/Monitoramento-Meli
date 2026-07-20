@@ -1413,6 +1413,23 @@ def fila_adiar(id: int):
     return jsonify({"ok": True, "status": "ADIADO"})
 
 
+@app.route("/api/fila/<int:id>/alterar-status", methods=["POST"])
+@login_required
+def fila_alterar_status(id: int):
+    from src.buybox import persistencia as buybox_persist
+    conta  = _conta_da_request()
+    body   = request.get_json(silent=True) or {}
+    status = (body.get("status") or "").upper()
+    if status not in {"PENDENTE", "APROVADO", "REJEITADO", "ADIADO"}:
+        return jsonify({"erro": "status inválido"}), 400
+    ok = buybox_persist.atualizar_status_fila(
+        id=id, status=status, observacao=body.get("observacao"), conta=conta
+    )
+    if not ok:
+        return jsonify({"erro": "item não encontrado"}), 404
+    return jsonify({"ok": True, "status": status})
+
+
 @app.route("/usuarios")
 @login_required
 def usuarios_page():
