@@ -35,6 +35,10 @@ from .modelos import (
     Alerta,
     Base,
     ConcorrenteDom,
+    FilaRevisao,
+    FILA_PENDENTE,
+    FILA_APROVADO,
+    FILA_REJEITADO,
     Snapshot,
     SnapshotConcorrente,
     SnapshotDom,
@@ -439,6 +443,135 @@ def alertas_recentes(sku: str, dias: int = 7,
         return list(s.execute(stmt).scalars())
 
 
+# ============================================================
+# Fila de revisão manual
+# ============================================================
+
+
+def _fila_para_dict(row: FilaRevisao) -> dict:
+    return {
+        "id":            row.id,
+        "sku":           row.sku,
+        "item_id":       row.item_id,
+        "campanha_id":   row.campanha_id,
+        "campanha_nome": row.campanha_nome,
+        "rc_pct":        row.rc_pct,
+        "rc_minimo":     row.rc_minimo,
+        "preco_atual":   row.preco_atual,
+        "preco_campanha": row.preco_campanha,
+        "rebate":        row.rebate,
+        "posicao_buybox": row.posicao_buybox,
+        "estoque":       row.estoque,
+        "ja_em_campanha": row.ja_em_campanha,
+        "motivo":        row.motivo,
+        "vigencia_fim":  row.vigencia_fim,
+        "status":        row.status,
+        "ts_coleta":     row.ts_coleta.isoformat() if row.ts_coleta else None,
+        "ts_acao":       row.ts_acao.isoformat() if row.ts_acao else None,
+        "observacao":    row.observacao,
+    }
+
+
+def popular_fila(item: dict, rc_minimo: float, conta: str = "best_hair") -> bool:
+    """
+    Insere ou atualiza campanha na fila de revisão.
+
+    Dedup por (item_id, campanha_id, rebate):
+      - PENDENTE  → atualiza dados da coleta
+      - APROVADO/REJEITADO → mantém decisão, não reprocessa
+      - ADIADO    → insere novo PENDENTE
+      - Sem entrada → insere PENDENTE
+
+    Retorna True se inseriu/atualizou, False se ignorou por decisão já tomada.
+    """
+    item_id     = item["item_id"]
+    campanha_id = item["campanha_id"]
+    rebate_val  = round(float(item.get("rebate") or 0), 2)
+    now         = datetime.now(timezone.utc)
+
+    with sessao(conta) as s:
+        existente = (
+            s.query(FilaRevisao)
+            .filter(
+                FilaRevisao.item_id == item_id,
+                FilaRevisao.campanha_id == campanha_id,
+                FilaRevisao.rebate.between(rebate_val - 0.01, rebate_val + 0.01),
+            )
+            .order_by(FilaRevisao.ts_coleta.desc())
+            .first()
+        )
+
+        if existente is not None and existente.status in (FILA_APROVADO, FILA_REJEITADO):
+            return False
+
+        if existente is not None and existente.status == FILA_PENDENTE:
+            existente.ts_coleta    = now
+            existente.rc_pct       = round(float(item.get("rc_campanha") or 0), 2)
+            existente.rc_minimo    = rc_minimo
+            existente.preco_atual  = item.get("preco_atual")
+            existente.preco_campanha = float(item.get("preco_campanha") or 0)
+            existente.posicao_buybox = item.get("posicao_buybox")
+            existente.estoque      = item.get("estoque")
+            existente.ja_em_campanha = bool(item.get("ja_em_campanha", False))
+            existente.motivo       = item.get("motivo", "")
+            return True
+
+        # Novo PENDENTE (sem entrada ou status ADIADO)
+        s.add(FilaRevisao(
+            sku=item["sku"],
+            item_id=item_id,
+            campanha_id=campanha_id,
+            campanha_nome=item.get("campanha_nome", ""),
+            rc_pct=round(float(item.get("rc_campanha") or 0), 2),
+            rc_minimo=rc_minimo,
+            preco_atual=item.get("preco_atual"),
+            preco_campanha=float(item.get("preco_campanha") or 0),
+            rebate=rebate_val,
+            posicao_buybox=item.get("posicao_buybox"),
+            estoque=item.get("estoque"),
+            ja_em_campanha=bool(item.get("ja_em_campanha", False)),
+            motivo=item.get("motivo", ""),
+            vigencia_fim=item.get("vigencia_fim") or None,
+            status=FILA_PENDENTE,
+            ts_coleta=now,
+        ))
+        return True
+
+
+def listar_fila(conta: str = "best_hair", status: Optional[str] = None) -> list[dict]:
+    """Lista itens da fila de revisão, mais recentes primeiro."""
+    with sessao(conta) as s:
+        q = s.query(FilaRevisao)
+        if status:
+            q = q.filter(FilaRevisao.status == status)
+        rows = q.order_by(FilaRevisao.ts_coleta.desc()).all()
+        return [_fila_para_dict(r) for r in rows]
+
+
+def atualizar_status_fila(
+    id: int,
+    status: str,
+    observacao: Optional[str] = None,
+    conta: str = "best_hair",
+) -> bool:
+    """Atualiza status de um item da fila. Retorna True se encontrado."""
+    with sessao(conta) as s:
+        row = s.get(FilaRevisao, id)
+        if row is None:
+            return False
+        row.status     = status
+        row.ts_acao    = datetime.now(timezone.utc)
+        if observacao is not None:
+            row.observacao = observacao
+        return True
+
+
+def contagem_pendentes_fila(conta: str = "best_hair") -> int:
+    """Número de itens PENDENTE na fila da conta."""
+    with sessao(conta) as s:
+        return s.query(FilaRevisao).filter(FilaRevisao.status == FILA_PENDENTE).count()
+
+
 __all__ = [
     "init_db",
     "get_engine",
@@ -453,5 +586,9 @@ __all__ = [
     "registrar_alerta",
     "ultimo_alerta_enviado",
     "alertas_recentes",
+    "popular_fila",
+    "listar_fila",
+    "atualizar_status_fila",
+    "contagem_pendentes_fila",
     "modelos",
 ]

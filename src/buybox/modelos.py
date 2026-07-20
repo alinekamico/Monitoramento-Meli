@@ -47,6 +47,16 @@ TIPOS_CRITICOS = {TIPO_A1_PERDI_BUYBOX, TIPO_A2_AMEACA, TIPO_A3_OPORTUNIDADE}
 TIPOS_RESUMO_DIARIO = {TIPO_B1_PROBLEMA, TIPO_B2_MARGEM_BAIXA, TIPO_B3_OPORTUNIDADE_SUBIR}
 TIPOS_CAMPANHAS = {TIPO_C1_CAMPANHAS_ACEITAR}
 
+# ============================================================
+# Status da fila de revisão manual
+# ============================================================
+
+FILA_PENDENTE  = "PENDENTE"
+FILA_APROVADO  = "APROVADO"
+FILA_REJEITADO = "REJEITADO"
+FILA_ADIADO    = "ADIADO"
+FILA_APLICADO  = "APLICADO"  # fase 2: auto-aceite via API
+
 
 # ============================================================
 # ORM
@@ -174,6 +184,43 @@ class SnapshotConcorrente(Base):
     prazo_entrega_dias: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     snapshot: Mapped[Snapshot] = relationship(back_populates="concorrentes")
+
+
+class FilaRevisao(Base):
+    """Campanha candidata aguardando revisão manual antes de ser aceita."""
+
+    __tablename__ = "fila_revisao"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # Identificação
+    sku: Mapped[str] = mapped_column(String(32), index=True)
+    item_id: Mapped[str] = mapped_column(String(32), index=True)
+    campanha_id: Mapped[str] = mapped_column(String(64))
+    campanha_nome: Mapped[str] = mapped_column(String(128), default="")
+
+    # Dados no momento da coleta
+    rc_pct: Mapped[float] = mapped_column(Float)
+    rc_minimo: Mapped[float] = mapped_column(Float)
+    preco_atual: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    preco_campanha: Mapped[float] = mapped_column(Float)
+    rebate: Mapped[float] = mapped_column(Float, default=0.0)
+    posicao_buybox: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    estoque: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    ja_em_campanha: Mapped[bool] = mapped_column(Boolean, default=False)
+    motivo: Mapped[str] = mapped_column(String(255), default="")
+    vigencia_fim: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+
+    # Controle de revisão
+    status: Mapped[str] = mapped_column(String(16), index=True, default="PENDENTE")
+    ts_coleta: Mapped[datetime] = mapped_column(DateTime, index=True)
+    ts_acao: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    observacao: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_fila_status_ts", "status", "ts_coleta"),
+        Index("ix_fila_item_campanha", "item_id", "campanha_id"),
+    )
 
 
 class Alerta(Base):

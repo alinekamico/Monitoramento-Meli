@@ -1337,6 +1337,82 @@ def debug_raw_campanhas(item_id: str):
 # Entrypoint
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Fila de revisão manual de campanhas
+# ---------------------------------------------------------------------------
+
+@app.route("/api/fila")
+@login_required
+def fila_listar():
+    """Lista itens da fila de revisão. ?status=PENDENTE|APROVADO|REJEITADO|ADIADO"""
+    from src.buybox import persistencia as buybox_persist
+    conta  = _conta_da_request()
+    status = request.args.get("status") or None
+    itens  = buybox_persist.listar_fila(conta=conta, status=status)
+    return jsonify({"itens": itens, "total": len(itens)})
+
+
+@app.route("/api/fila/contagem")
+@login_required
+def fila_contagem():
+    """Retorna contagem de itens PENDENTE por conta (para badge na interface)."""
+    from src.buybox import persistencia as buybox_persist
+    import yaml as _yaml
+    contas_path = _CONFIG_DIR / "contas.yaml"
+    with open(contas_path, encoding="utf-8") as f:
+        cfg_contas = _yaml.safe_load(f)
+    contas_lista = list((cfg_contas.get("contas") or {}).keys())
+    resultado = {}
+    for c in contas_lista:
+        try:
+            resultado[c] = buybox_persist.contagem_pendentes_fila(conta=c)
+        except Exception:
+            resultado[c] = 0
+    total = sum(resultado.values())
+    return jsonify({"por_conta": resultado, "total": total})
+
+
+@app.route("/api/fila/<int:id>/aprovar", methods=["POST"])
+@login_required
+def fila_aprovar(id: int):
+    from src.buybox import persistencia as buybox_persist
+    conta = _conta_da_request()
+    body  = request.get_json(silent=True) or {}
+    ok = buybox_persist.atualizar_status_fila(
+        id=id, status="APROVADO", observacao=body.get("observacao"), conta=conta
+    )
+    if not ok:
+        return jsonify({"erro": "item não encontrado"}), 404
+    return jsonify({"ok": True, "status": "APROVADO"})
+
+
+@app.route("/api/fila/<int:id>/rejeitar", methods=["POST"])
+@login_required
+def fila_rejeitar(id: int):
+    from src.buybox import persistencia as buybox_persist
+    conta = _conta_da_request()
+    body  = request.get_json(silent=True) or {}
+    ok = buybox_persist.atualizar_status_fila(
+        id=id, status="REJEITADO", observacao=body.get("observacao"), conta=conta
+    )
+    if not ok:
+        return jsonify({"erro": "item não encontrado"}), 404
+    return jsonify({"ok": True, "status": "REJEITADO"})
+
+
+@app.route("/api/fila/<int:id>/adiar", methods=["POST"])
+@login_required
+def fila_adiar(id: int):
+    from src.buybox import persistencia as buybox_persist
+    conta = _conta_da_request()
+    ok = buybox_persist.atualizar_status_fila(
+        id=id, status="ADIADO", observacao=None, conta=conta
+    )
+    if not ok:
+        return jsonify({"erro": "item não encontrado"}), 404
+    return jsonify({"ok": True, "status": "ADIADO"})
+
+
 @app.route("/usuarios")
 @login_required
 def usuarios_page():

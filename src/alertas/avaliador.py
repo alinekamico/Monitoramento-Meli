@@ -468,28 +468,35 @@ def avaliar_campanhas_aceitar(
                 total_encontradas += 1
                 campanha_id  = campanha.get("id") or campanha.get("ref_id") or ""
                 rebate_atual = round(float(campanha.get("rebate_valor") or 0), 2)
-                if campanha_id and (item_id, campanha_id, rebate_atual) in ja_notificadas:
-                    continue  # já notificada com este rebate
 
-                itens_aceitar.append({
-                    "sku":                sku,
-                    "item_id":            item_id,
-                    "campanha_id":        campanha_id,
-                    "campanha_nome":      campanha.get("name") or campanha.get("type") or "—",
-                    # Estado atual do anúncio
-                    "preco_atual":        preco_atual_snap,
-                    "rc_atual":           rc_atual_snap,
-                    "posicao_buybox":     posicao_snap,
-                    "estoque":            estoque_snap,
-                    "ja_em_campanha":     ja_em_campanha,
+                fila_dados = {
+                    "sku":            sku,
+                    "item_id":        item_id,
+                    "campanha_id":    campanha_id,
+                    "campanha_nome":  campanha.get("name") or campanha.get("type") or "—",
+                    "preco_atual":    preco_atual_snap,
+                    "rc_atual":       rc_atual_snap,
+                    "posicao_buybox": posicao_snap,
+                    "estoque":        estoque_snap,
+                    "ja_em_campanha": ja_em_campanha,
                     "campanha_ativa_nome": campanha_ativa_nome,
-                    # Dados da campanha disponível
-                    "preco_campanha":     preco,
-                    "rebate":             campanha.get("rebate_valor", 0.0),
-                    "rc_campanha":        resultado_m.get("rc_pct", 0.0),
-                    "motivo":             resultado_d["motivo"],
-                    "vigencia_fim":       campanha.get("finish_date") or "",
-                })
+                    "preco_campanha": preco,
+                    "rebate":         campanha.get("rebate_valor", 0.0),
+                    "rc_campanha":    resultado_m.get("rc_pct", 0.0),
+                    "motivo":         resultado_d["motivo"],
+                    "vigencia_fim":   campanha.get("finish_date") or "",
+                }
+
+                # Popula a fila de revisão independentemente do dedup de e-mail
+                try:
+                    persistencia.popular_fila(fila_dados, rc_min, conta)
+                except Exception as exc:
+                    _log.warning("C1: erro ao popular fila item=%s — %s", item_id, exc)
+
+                if campanha_id and (item_id, campanha_id, rebate_atual) in ja_notificadas:
+                    continue  # já notificada por e-mail com este rebate
+
+                itens_aceitar.append(fila_dados)
 
     if not itens_aceitar:
         if total_encontradas > 0:

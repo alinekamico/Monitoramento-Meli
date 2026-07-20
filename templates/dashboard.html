@@ -283,6 +283,49 @@
     .rc-low    { color: var(--red); }
 
     /* =================================================================
+       Aba Fila de Revisão
+    ================================================================= */
+    .fila-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--red); color: #fff; font-size: 10px; font-weight: 700;
+      border-radius: 10px; padding: 1px 6px; margin-left: 4px; min-width: 18px;
+    }
+    .fila-toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 12px 0 16px; flex-wrap: wrap;
+    }
+    .fila-filtros { display: flex; gap: 6px; flex-wrap: wrap; }
+    .fila-table-wrap { overflow-x: auto; }
+    .fila-table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+    }
+    .fila-table th {
+      padding: 8px 10px; border-bottom: 1px solid var(--border);
+      color: var(--muted); font-weight: 600; font-size: 11px;
+      text-transform: uppercase; letter-spacing: .4px; white-space: nowrap;
+    }
+    .fila-table td {
+      padding: 9px 10px; border-bottom: 1px solid var(--border);
+      vertical-align: middle; white-space: nowrap;
+    }
+    .fila-table tbody tr:hover { background: var(--hover); }
+    .fila-acoes { display: flex; gap: 6px; justify-content: center; }
+    .btn-aprovar  { background: rgba(34,197,94,.15);  color: var(--green); border: 1px solid rgba(34,197,94,.3);  }
+    .btn-rejeitar { background: rgba(239,68,68,.12);  color: var(--red);   border: 1px solid rgba(239,68,68,.3);  }
+    .btn-adiar    { background: rgba(250,204,21,.12); color: var(--accent); border: 1px solid rgba(250,204,21,.3); }
+    .btn-aprovar:hover  { background: rgba(34,197,94,.3); }
+    .btn-rejeitar:hover { background: rgba(239,68,68,.25); }
+    .btn-adiar:hover    { background: rgba(250,204,21,.25); }
+    .fila-status-chip {
+      display: inline-block; padding: 2px 8px; border-radius: 10px;
+      font-size: 11px; font-weight: 600;
+    }
+    .fila-chip-aprovado  { background: rgba(34,197,94,.15);  color: var(--green); }
+    .fila-chip-rejeitado { background: rgba(239,68,68,.12);  color: var(--red); }
+    .fila-chip-adiado    { background: rgba(250,204,21,.12); color: var(--accent); }
+    .fila-ja-campanha { font-size: 10px; color: var(--accent); margin-left: 4px; }
+
+    /* =================================================================
        Aba Buybox — extensão do MVP. Estilos abaixo não afetam Campanhas.
        ================================================================= */
 
@@ -1118,6 +1161,9 @@
   <button class="tab-btn active" data-tab="campanhas"  onclick="switchTab('campanhas',this)">Campanhas</button>
   <button class="tab-btn"        data-tab="buybox"     onclick="switchTab('buybox',this)">Buybox</button>
   <button class="tab-btn"        data-tab="simulador"  onclick="switchTab('simulador',this)">Simulador PDV</button>
+  <button class="tab-btn"        data-tab="fila"       onclick="switchTab('fila',this)">
+    Fila de Revisão <span id="fila-badge" class="fila-badge" style="display:none"></span>
+  </button>
 
   <a class="tab-btn" id="tab-admin-link" href="{{ app_prefix }}/usuarios" style="display:none;">Usuários</a>
 </nav>
@@ -1331,6 +1377,48 @@
     </div>
   </div>
   <div id="sim-area"></div>
+</main>
+
+<!-- ABA FILA DE REVISÃO -->
+<main id="pane-fila" class="tab-pane">
+  <div class="fila-toolbar">
+    <div class="fila-filtros">
+      <button class="filter-btn active" data-fila-filter="PENDENTE"  onclick="setFilaFilter('PENDENTE',this)">Pendentes</button>
+      <button class="filter-btn"        data-fila-filter="APROVADO"  onclick="setFilaFilter('APROVADO',this)">Aprovados</button>
+      <button class="filter-btn"        data-fila-filter="REJEITADO" onclick="setFilaFilter('REJEITADO',this)">Rejeitados</button>
+      <button class="filter-btn"        data-fila-filter="ADIADO"    onclick="setFilaFilter('ADIADO',this)">Adiados</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span id="fila-info" style="font-size:12px;color:var(--muted)"></span>
+      <button class="btn-sm" onclick="loadFila()">↻ Atualizar</button>
+    </div>
+  </div>
+
+  <!-- Estado vazio / carregando -->
+  <div id="fila-estado" style="padding:48px;text-align:center;color:var(--muted);display:none"></div>
+
+  <!-- Tabela -->
+  <div class="fila-table-wrap">
+    <table class="fila-table" id="fila-table" style="display:none">
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Item</th>
+          <th>Campanha</th>
+          <th style="text-align:right">Preço atual</th>
+          <th style="text-align:right">Preço campanha</th>
+          <th style="text-align:right">Rebate</th>
+          <th style="text-align:right">RC%</th>
+          <th style="text-align:center">Buybox</th>
+          <th style="text-align:center">Estoque</th>
+          <th>Vigência</th>
+          <th style="text-align:center">Coletado</th>
+          <th style="text-align:center">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="fila-tbody"></tbody>
+    </table>
+  </div>
 </main>
 
 <!-- Modal do Simulador de PDV -->
@@ -2633,6 +2721,7 @@
     if (activeTab === 'campanhas') return loadData(force);
     if (activeTab === 'buybox')    return loadBuyboxData();
     if (activeTab === 'simulador') return simActivate();
+    if (activeTab === 'fila')      return loadFila();
   }
 
   async function loadBuyboxData() {
@@ -4930,6 +5019,169 @@
     }
   });
 
+  // =====================================================================
+  // ABA FILA DE REVISÃO
+  // =====================================================================
+  let _filaFiltro  = 'PENDENTE';
+  let _filaItens   = [];
+
+  function setFilaFilter(status, el) {
+    _filaFiltro = status;
+    document.querySelectorAll('[data-fila-filter]').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    _renderFila();
+  }
+
+  async function loadFila() {
+    _filaEstado('Carregando…');
+    try {
+      const res  = await fetch(`${_BASE}/api/fila?status=${_filaFiltro}&${_cParam()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      _filaItens = json.itens || [];
+      _renderFila();
+    } catch (err) {
+      _filaEstado('Erro ao carregar fila: ' + err.message);
+    }
+  }
+
+  function _filaEstado(msg) {
+    const estado = document.getElementById('fila-estado');
+    const table  = document.getElementById('fila-table');
+    estado.textContent = msg;
+    estado.style.display = msg ? '' : 'none';
+    table.style.display  = msg ? 'none' : '';
+  }
+
+  function _renderFila() {
+    const tbody = document.getElementById('fila-tbody');
+    const table = document.getElementById('fila-table');
+    const info  = document.getElementById('fila-info');
+    const estado = document.getElementById('fila-estado');
+
+    if (_filaItens.length === 0) {
+      const msgs = {
+        PENDENTE:  'Nenhuma campanha aguardando revisão.',
+        APROVADO:  'Nenhuma campanha aprovada.',
+        REJEITADO: 'Nenhuma campanha rejeitada.',
+        ADIADO:    'Nenhuma campanha adiada.',
+      };
+      _filaEstado(msgs[_filaFiltro] || 'Nenhum item.');
+      return;
+    }
+
+    estado.style.display = 'none';
+    table.style.display  = '';
+    info.textContent = `${_filaItens.length} item(s)`;
+
+    tbody.innerHTML = _filaItens.map(it => _filaRow(it)).join('');
+  }
+
+  function _filaRow(it) {
+    const rcCls  = corPorRC(it.rc_pct);
+    const precoA = it.preco_atual   != null ? 'R$ ' + it.preco_atual.toFixed(2).replace('.', ',')   : '—';
+    const precoC = it.preco_campanha != null ? 'R$ ' + it.preco_campanha.toFixed(2).replace('.', ',') : '—';
+    const rebate = it.rebate != null ? 'R$ ' + it.rebate.toFixed(2).replace('.', ',') : '—';
+    const vigencia = it.vigencia_fim ? it.vigencia_fim.slice(0, 10) : '—';
+    const coletado = it.ts_coleta ? _filaIdade(it.ts_coleta) : '—';
+    const jaCamp   = it.ja_em_campanha ? '<span class="fila-ja-campanha" title="Já está em outra campanha">⚠ em camp.</span>' : '';
+    const buybox   = it.posicao_buybox != null ? `${it.posicao_buybox}º` : '—';
+
+    let acoes = '';
+    if (it.status === 'PENDENTE') {
+      acoes = `
+        <button class="btn-sm btn-aprovar"  onclick="filaAprovar(${it.id}, '${it.item_id}')">Aprovar</button>
+        <button class="btn-sm btn-rejeitar" onclick="filaRejeitar(${it.id})">Rejeitar</button>
+        <button class="btn-sm btn-adiar"    onclick="filaAdiar(${it.id})">Adiar</button>
+      `;
+    } else {
+      const chipCls = {APROVADO:'fila-chip-aprovado', REJEITADO:'fila-chip-rejeitado', ADIADO:'fila-chip-adiado'}[it.status] || '';
+      acoes = `<span class="fila-status-chip ${chipCls}">${it.status}</span>`;
+    }
+
+    return `<tr>
+      <td><strong>${it.sku}</strong></td>
+      <td class="mono" style="color:var(--muted);font-size:11px">${it.item_id}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis" title="${it.campanha_nome}">${it.campanha_nome}${jaCamp}</td>
+      <td class="mono" style="text-align:right">${precoA}</td>
+      <td class="mono" style="text-align:right;color:var(--green)">${precoC}</td>
+      <td class="mono" style="text-align:right;color:var(--accent)">${rebate}</td>
+      <td class="mono ${rcCls}" style="text-align:right;font-weight:600">${it.rc_pct != null ? it.rc_pct.toFixed(1) + '%' : '—'}</td>
+      <td class="mono" style="text-align:center">${buybox}</td>
+      <td class="mono" style="text-align:center">${it.estoque != null ? it.estoque : '—'}</td>
+      <td style="font-size:11px;color:var(--muted)">${vigencia}</td>
+      <td style="font-size:11px;color:var(--muted);text-align:center">${coletado}</td>
+      <td><div class="fila-acoes">${acoes}</div></td>
+    </tr>`;
+  }
+
+  function _filaIdade(iso) {
+    const diff = (Date.now() - new Date(iso).getTime()) / 60000;
+    if (diff < 60)    return Math.round(diff) + ' min';
+    if (diff < 1440)  return Math.round(diff / 60) + 'h';
+    return Math.round(diff / 1440) + 'd';
+  }
+
+  async function filaAprovar(id, itemId) {
+    try {
+      const res = await fetch(`${_BASE}/api/fila/${id}/aprovar`, {method: 'POST',
+        headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})});
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showToast('Campanha aprovada — abra o Mercado Livre para confirmar.', 'ok');
+      // Abre a Central de Promoções ML para o item
+      window.open(`https://www.mercadolivre.com.br/promotions/central?item_id=${itemId}`, '_blank');
+      _filaItens = _filaItens.filter(it => it.id !== id);
+      _renderFila();
+      _atualizarFilaBadge();
+    } catch (err) {
+      showToast('Erro ao aprovar: ' + err.message, 'err');
+    }
+  }
+
+  async function filaRejeitar(id) {
+    try {
+      const res = await fetch(`${_BASE}/api/fila/${id}/rejeitar`, {method: 'POST',
+        headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})});
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showToast('Campanha rejeitada.', 'ok');
+      _filaItens = _filaItens.filter(it => it.id !== id);
+      _renderFila();
+      _atualizarFilaBadge();
+    } catch (err) {
+      showToast('Erro ao rejeitar: ' + err.message, 'err');
+    }
+  }
+
+  async function filaAdiar(id) {
+    try {
+      const res = await fetch(`${_BASE}/api/fila/${id}/adiar`, {method: 'POST'});
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showToast('Campanha adiada — reaparece na próxima coleta.', 'ok');
+      _filaItens = _filaItens.filter(it => it.id !== id);
+      _renderFila();
+      _atualizarFilaBadge();
+    } catch (err) {
+      showToast('Erro ao adiar: ' + err.message, 'err');
+    }
+  }
+
+  async function _atualizarFilaBadge() {
+    try {
+      const res  = await fetch(`${_BASE}/api/fila/contagem`);
+      if (!res.ok) return;
+      const json = await res.json();
+      const total = json.total || 0;
+      const badge = document.getElementById('fila-badge');
+      if (!badge) return;
+      if (total > 0) {
+        badge.textContent = total;
+        badge.style.display = '';
+      } else {
+        badge.style.display = 'none';
+      }
+    } catch (_) {}
+  }
+
   // ── TEMA CLARO/ESCURO ──────────────────────────────────────────
   function _applyTheme(light) {
     document.body.classList.toggle('light', light);
@@ -4952,6 +5204,7 @@
 
   // Auto-load na abertura
   loadData();
+  _atualizarFilaBadge();
 
   // Mostrar aba Usuários apenas para admin + exibir nome
   fetch(_BASE + '/api/auth/me', {credentials: 'include'})
